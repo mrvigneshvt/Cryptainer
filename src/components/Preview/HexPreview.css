@@ -1,0 +1,63 @@
+.hex-preview {
+  background-color: var(--bg-tertiary);
+  border-radius: var(--radius-md);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.8125rem;
+  overflow: auto;
+  max-height: 70vh;
+}
+
+.hex-header {
+  display: flex;
+  padding: 0.75rem 1rem;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  color: var(--text-secondary);
+  font-weight: 500;
+  position: sticky;
+  top: 0;
+  z-index: 1;
+}
+
+.hex-content {
+  padding: 0.5rem 0;
+}
+
+.hex-row {
+  display: flex;
+  padding: 0.125rem 1rem;
+  transition: background-color var(--transition-fast);
+}
+
+.hex-row:hover {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.hex-offset {
+  width: 5rem;
+  flex-shrink: 0;
+  color: var(--text-muted);
+}
+
+.hex-bytes {
+  flex: 1;
+  color: var(--accent);
+  letter-spacing: 0.05em;
+}
+
+.hex-ascii {
+  width: 8rem;
+  flex-shrink: 0;
+  color: var(--text-secondary);
+  padding-left: 1rem;
+  border-left: 1px solid var(--border-color);
+  margin-left: 1rem;
+}
+
+.hex-truncated {
+  padding: 1rem;
+  text-align: center;
+  color: var(--text-muted);
+  font-style: italic;
+  border-top: 1px solid var(--border-color);
+}

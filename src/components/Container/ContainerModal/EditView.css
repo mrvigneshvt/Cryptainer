@@ -1,0 +1,121 @@
+.edit-view h2 {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 0.25rem;
+}
+
+.edit-subtitle {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+  margin-bottom: 1.5rem;
+}
+
+.edit-files-section h3,
+.add-files-section h3 {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-bottom: 0.75rem;
+}
+
+.edit-files-section {
+  margin-bottom: 1.5rem;
+}
+
+.edit-files-list {
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.edit-file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+}
+
+.edit-file-item:last-child {
+  border-bottom: none;
+}
+
+.edit-file-item.marked-removal {
+  background-color: var(--error-dim);
+  opacity: 0.7;
+}
+
+.edit-file-item.marked-removal .file-name {
+  text-decoration: line-through;
+}
+
+.file-icon {
+  font-size: 1.25rem;
+}
+
+.file-name {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.toggle-remove-btn {
+  padding: 0.25rem 0.5rem;
+  font-size: 0.75rem;
+  border-radius: var(--radius-sm);
+  border: none;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background-color: var(--error-dim);
+  color: var(--error);
+}
+
+.toggle-remove-btn:hover {
+  background-color: var(--error);
+  color: white;
+}
+
+.toggle-remove-btn.undo {
+  background-color: var(--accent-dim);
+  color: var(--accent);
+}
+
+.toggle-remove-btn.undo:hover {
+  background-color: var(--accent);
+  color: var(--bg-primary);
+}
+
+.add-files-section {
+  margin-bottom: 1.5rem;
+}
+
+.add-files-btn {
+  width: 100%;
+  padding: 1rem;
+  background-color: var(--bg-tertiary);
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  font-size: 0.9375rem;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+}
+
+.add-files-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.password-section {
+  margin-bottom: 1.5rem;
+}
+
+.edit-actions {
+  display: flex;
+  justify-content: space-between;
+}

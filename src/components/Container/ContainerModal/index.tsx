@@ -1,0 +1,159 @@
+import React, { useState, useEffect } from 'react';
+import { Modal } from '../../UI';
+import { LockView } from './LockView';
+import { OpenView } from './OpenView';
+import { EditView } from './EditView';
+import { PreviewRouter } from '../../Preview';
+import { useVaultStore } from '../../../store/vaultStore';
+import type { ContainerMeta, VaultFileMeta } from '../../../types/vault';
+import './index.css';
+
+interface ContainerModalProps {
+  container: ContainerMeta;
+  onClose: () => void;
+}
+
+type ViewState = 'locked' | 'open' | 'edit' | 'preview';
+
+export const ContainerModal: React.FC<ContainerModalProps> = ({
+  container,
+  onClose,
+}) => {
+  const [view, setView] = useState<ViewState>('locked');
+  const [files, setFiles] = useState<VaultFileMeta[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [previewFile, setPreviewFile] = useState<VaultFileMeta | null>(null);
+  const [previewData, setPreviewData] = useState<Uint8Array | null>(null);
+  const { unlockContainer, lockContainer, getFileData, saveContainerEdits } = useVaultStore();
+
+  const handleUnlock = async (password: string) => {
+    setIsLoading(true);
+    try {
+      const fileList = await unlockContainer(container.id, password);
+      setFiles(fileList);
+      setView('open');
+    } catch (e) {
+      console.error('Unlock failed:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleLock = async () => {
+    await lockContainer(container.id);
+    setView('locked');
+    setFiles([]);
+  };
+
+  const handleSaveEdits = async (
+    password: string,
+    filesToRemove: string[],
+    newFiles: File[]
+  ) => {
+    setIsLoading(true);
+    try {
+      // Convert new files to FileInput format
+      const fileInputs = await Promise.all(
+        newFiles.map(async (file) => {
+          const arrayBuffer = await file.arrayBuffer();
+          return {
+            name: file.name,
+            mime: file.type || 'application/octet-stream',
+            data: Array.from(new Uint8Array(arrayBuffer)),
+          };
+        })
+      );
+
+      await saveContainerEdits(container.id, password, fileInputs, filesToRemove);
+      
+      // Refresh the file list
+      const updatedFiles = await unlockContainer(container.id, password);
+      setFiles(updatedFiles);
+      setView('open');
+    } catch (e) {
+      console.error('Save failed:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handlePreview = async (file: VaultFileMeta) => {
+    setIsLoading(true);
+    try {
+      const data = await getFileData(container.id, file.id);
+      setPreviewFile(file);
+      setPreviewData(data);
+      setView('preview');
+    } catch (e) {
+      console.error('Preview failed:', e);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleClosePreview = () => {
+    setPreviewFile(null);
+    setPreviewData(null);
+    setView('open');
+  };
+
+  useEffect(() => {
+    return () => {
+      // Lock container when modal closes
+      if (view !== 'locked') {
+        lockContainer(container.id);
+      }
+    };
+  }, []);
+
+  return (
+    <Modal open={true} onClose={onClose} size="lg">
+      <div className="container-modal">
+        {view === 'locked' && (
+          <LockView
+            container={container}
+            onUnlock={handleUnlock}
+            isLoading={isLoading}
+          />
+        )}
+
+        {view === 'open' && (
+          <OpenView
+            container={container}
+            files={files}
+            onEdit={() => setView('edit')}
+            onLock={handleLock}
+            onPreview={handlePreview}
+          />
+        )}
+
+        {view === 'edit' && (
+          <EditView
+            files={files}
+            onSave={handleSaveEdits}
+            onCancel={() => setView('open')}
+            isLoading={isLoading}
+          />
+        )}
+
+        {view === 'preview' && previewFile && previewData && (
+          <div className="preview-view">
+            <div className="preview-header">
+              <h3>{previewFile.name}</h3>
+              <button className="preview-close" onClick={handleClosePreview}>
+                ✕
+              </button>
+            </div>
+            <div className="preview-content">
+              <PreviewRouter
+                mime={previewFile.mime}
+                data={previewData}
+                name={previewFile.name}
+              />
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+};

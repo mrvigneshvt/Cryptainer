@@ -1,0 +1,116 @@
+.dropzone-wrapper {
+  width: 100%;
+}
+
+.dropzone {
+  border: 2px dashed var(--border-color);
+  border-radius: var(--radius-lg);
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  background-color: var(--bg-tertiary);
+}
+
+.dropzone:hover,
+.dropzone-active {
+  border-color: var(--accent);
+  background-color: var(--accent-dim);
+}
+
+.dropzone-has-files {
+  padding: 1rem;
+  border-style: solid;
+  border-color: var(--border-color-hover);
+}
+
+.dropzone-placeholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.dropzone-icon {
+  font-size: 2.5rem;
+  opacity: 0.6;
+}
+
+.dropzone-placeholder p {
+  color: var(--text-secondary);
+  font-weight: 500;
+}
+
+.dropzone-hint {
+  font-size: 0.8125rem;
+  color: var(--text-muted);
+}
+
+.dropzone-more {
+  color: var(--text-secondary);
+  font-size: 0.875rem;
+}
+
+.file-list {
+  margin-top: 1rem;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+}
+
+.file-count {
+  padding: 0.5rem 0.75rem;
+  background-color: var(--bg-tertiary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+.file-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.625rem 0.75rem;
+  border-bottom: 1px solid var(--border-color);
+  background-color: var(--bg-secondary);
+}
+
+.file-item:last-child {
+  border-bottom: none;
+}
+
+.file-name {
+  flex: 1;
+  font-size: 0.875rem;
+  color: var(--text-primary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.file-size {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.file-remove {
+  width: 1.5rem;
+  height: 1.5rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--error-dim);
+  color: var(--error);
+  border: none;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-size: 1.125rem;
+  line-height: 1;
+  transition: all var(--transition-fast);
+}
+
+.file-remove:hover {
+  background-color: var(--error);
+  color: white;
+}
