@@ -377,3 +377,175 @@
   border-color: var(--error);
   color: var(--error);
 }
+
+/* ============================================================================
+   RESPONSIVE BREAKPOINTS
+   Mobile: < 600px | Tablet: 600-1024px | Desktop: > 1024px
+   ============================================================================ */
+
+/* Mobile Styles (< 600px) */
+@media (max-width: 599px) {
+  .app-header {
+    padding: 0.75rem 1rem;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .logo {
+    font-size: 1.125rem;
+  }
+
+  .header-actions {
+    width: 100%;
+    justify-content: space-between;
+    gap: 0.5rem;
+  }
+
+  .header-actions button {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 0.5rem 0.75rem;
+  }
+
+  .vault-toolbar {
+    flex-direction: column;
+    padding: 0.75rem 1rem;
+    gap: 0.75rem;
+  }
+
+  .search-box {
+    max-width: none;
+    width: 100%;
+  }
+
+  .sort-select {
+    width: 100%;
+  }
+
+  .tag-filter {
+    padding: 0.5rem 1rem;
+  }
+
+  .app-main {
+    padding: 1rem;
+  }
+
+  .vault-grid {
+    grid-template-columns: 1fr;
+    gap: 0.75rem;
+  }
+
+  .container-card {
+    padding: 1rem;
+  }
+
+  .container-card:hover {
+    transform: none;
+  }
+
+  /* Always show card actions on mobile for touch accessibility */
+  .card-actions {
+    opacity: 1;
+  }
+
+  .card-action-btn {
+    min-width: 44px;
+    min-height: 44px;
+    width: 44px;
+    height: 44px;
+    font-size: 1rem;
+  }
+
+  .card-title {
+    font-size: 1rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .card-meta {
+    flex-direction: column;
+    gap: 0.25rem;
+    font-size: 0.75rem;
+  }
+
+  .empty-state {
+    height: 50vh;
+    padding: 1rem;
+  }
+
+  .empty-icon {
+    font-size: 3rem;
+  }
+
+  .empty-state h2 {
+    font-size: 1.25rem;
+  }
+
+  .btn-primary,
+  .btn-secondary {
+    min-height: 44px;
+    padding: 0.5rem 0.875rem;
+    font-size: 0.875rem;
+  }
+
+  .error-toast {
+    left: 1rem;
+    right: 1rem;
+    transform: none;
+    text-align: center;
+  }
+}
+
+/* Tablet Styles (600px - 1024px) */
+@media (min-width: 600px) and (max-width: 1024px) {
+  .app-header {
+    padding: 1rem;
+  }
+
+  .vault-toolbar {
+    padding: 1rem;
+  }
+
+  .app-main {
+    padding: 1rem;
+  }
+
+  .vault-grid {
+    grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+    gap: 0.875rem;
+  }
+
+  .container-card {
+    padding: 1rem;
+  }
+}
+
+/* Ensure minimum touch target size for all interactive elements */
+@media (pointer: coarse) {
+  button,
+  .btn-primary,
+  .btn-secondary,
+  .btn-ghost,
+  .card-action-btn,
+  .tag-btn,
+  .search-clear {
+    min-height: 44px;
+    min-width: 44px;
+  }
+
+  input,
+  select {
+    min-height: 44px;
+  }
+}
+
+/* Landscape mode on mobile phones */
+@media (max-width: 899px) and (orientation: landscape) {
+  .app-header {
+    padding: 0.5rem 1rem;
+    flex-direction: row;
+  }
+
+  .vault-toolbar {
+    flex-direction: row;
+  }
+}

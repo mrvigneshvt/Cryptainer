@@ -35,5 +35,18 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "fs": {
+      "scope": [
+        "$APP",
+        "$APP/*",
+        "$APP/**/*",
+        "$DOCUMENT",
+        "$DOCUMENT/*",
+        "$DOWNLOAD",
+        "$DOWNLOAD/*"
+      ]
+    }
   }
 }
