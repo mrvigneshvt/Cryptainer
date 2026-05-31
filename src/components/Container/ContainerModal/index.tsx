@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Modal } from '../../UI';
 import { LockView } from './LockView';
 import { OpenView } from './OpenView';
@@ -24,6 +24,8 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [previewFile, setPreviewFile] = useState<VaultFileMeta | null>(null);
   const [previewData, setPreviewData] = useState<Uint8Array | null>(null);
+  const viewRef = useRef(view);
+  useEffect(() => { viewRef.current = view; });
   const { unlockContainer, lockContainer, getFileData, saveContainerEdits } = useVaultStore();
 
   const handleUnlock = async (password: string) => {
@@ -99,8 +101,8 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
 
   useEffect(() => {
     return () => {
-      // Lock container when modal closes
-      if (view !== 'locked') {
+      // Lock container when modal closes — use ref to avoid stale closure
+      if (viewRef.current !== 'locked') {
         lockContainer(container.id);
       }
     };
