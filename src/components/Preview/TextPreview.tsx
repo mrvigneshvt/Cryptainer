@@ -45,7 +45,7 @@ const CODE_EXTENSIONS: Record<string, string> = {
 
 export const TextPreview: React.FC<TextPreviewProps> = ({ data, name }) => {
   const { text, language } = useMemo(() => {
-    const decoder = new TextDecoder('utf-8');
+    const decoder = new TextDecoder('utf-8', { fatal: true });
     const text = decoder.decode(data);
     
     const ext = name.split('.').pop()?.toLowerCase() || '';

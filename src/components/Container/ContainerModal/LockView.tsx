@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Input, Button } from '../../UI';
 import type { ContainerMeta } from '../../../types/vault';
+import { formatBytes } from '../../../utils/format';
 import './LockView.css';
 
 interface LockViewProps {
@@ -62,10 +63,3 @@ export const LockView: React.FC<LockViewProps> = ({
   );
 };
 
-function formatBytes(bytes: number): string {
-  if (bytes === 0) return '0 B';
-  const k = 1024;
-  const sizes = ['B', 'KB', 'MB', 'GB'];
-  const i = Math.floor(Math.log(bytes) / Math.log(k));
-  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-}
