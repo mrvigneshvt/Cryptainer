@@ -47,12 +47,22 @@ export const useVaultStore = create<VaultState>((set) => ({
   },
 
   deleteContainer: async (id) => {
-    await invoke('delete_container', { containerId: id });
-    set(s => ({ containers: s.containers.filter(c => c.id !== id) }));
+    try {
+      await invoke('delete_container', { containerId: id });
+      set(s => ({ containers: s.containers.filter(c => c.id !== id) }));
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    }
   },
 
   unlockContainer: async (id, password) => {
-    return invoke<VaultFileMeta[]>('unlock_container', { containerId: id, password });
+    try {
+      return await invoke<VaultFileMeta[]>('unlock_container', { containerId: id, password });
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    }
   },
 
   lockContainer: async (id) => {
@@ -65,26 +75,41 @@ export const useVaultStore = create<VaultState>((set) => ({
   },
 
   exportContainer: async (id, destPath) => {
-    await invoke('export_container', { containerId: id, destPath });
+    try {
+      await invoke('export_container', { containerId: id, destPath });
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    }
   },
 
   importContainer: async (srcPath) => {
-    const meta = await invoke<ContainerMeta>('import_container', { srcPath });
-    set(s => ({ containers: [meta, ...s.containers] }));
-    return meta;
+    try {
+      const meta = await invoke<ContainerMeta>('import_container', { srcPath });
+      set(s => ({ containers: [meta, ...s.containers] }));
+      return meta;
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    }
   },
 
   saveContainerEdits: async (containerId, password, filesToAdd, fileIdsToRemove) => {
-    const updated = await invoke<ContainerMeta>('save_edits', {
-      containerId,
-      password,
-      filesToAdd,
-      fileIdsToRemove,
-    });
-    set(s => ({
-      containers: s.containers.map(c => c.id === containerId ? updated : c),
-    }));
-    return updated;
+    try {
+      const updated = await invoke<ContainerMeta>('save_edits', {
+        containerId,
+        password,
+        filesToAdd,
+        fileIdsToRemove,
+      });
+      set(s => ({
+        containers: s.containers.map(c => c.id === containerId ? updated : c),
+      }));
+      return updated;
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    }
   },
 
   clearError: () => set({ error: null }),

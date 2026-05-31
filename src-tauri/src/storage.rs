@@ -111,6 +111,37 @@ pub async fn delete_container(pool: &SqlitePool, id: &str) -> Result<()> {
     Ok(())
 }
 
+/// Check if a container with the given name already exists.
+pub async fn get_container_by_name(pool: &SqlitePool, name: &str) -> Result<Option<ContainerMeta>> {
+    let r = sqlx::query_as::<_, ContainerMetaRow>(
+        r#"SELECT id, name, algo, kdf_params, hint, tags,
+                  file_count, total_size, blob_path, blob_sha256,
+                  created_at, modified_at
+           FROM containers WHERE name=?
+           LIMIT 1"#
+    )
+    .bind(name)
+    .fetch_optional(pool).await?;
+
+    match r {
+        Some(row) => Ok(Some(ContainerMeta {
+            id: row.id,
+            name: row.name,
+            algo: row.algo,
+            kdf_params: serde_json::from_str(&row.kdf_params)?,
+            hint: row.hint,
+            tags: row.tags,
+            file_count: row.file_count as u32,
+            total_size: row.total_size as u64,
+            blob_path: row.blob_path,
+            blob_sha256: row.blob_sha256,
+            created_at: row.created_at,
+            modified_at: row.modified_at,
+        })),
+        None => Ok(None),
+    }
+}
+
 /// Fetch a single container by ID.
 pub async fn get_container(pool: &SqlitePool, id: &str) -> Result<ContainerMeta> {
     let r = sqlx::query_as::<_, ContainerMetaRow>(

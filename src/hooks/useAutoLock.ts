@@ -30,12 +30,13 @@ export const useAutoLock = (onLock: () => void) => {
     }
   }, []);
 
-  // Track user activity
+  // Track user activity — reset lock first, then update timestamp
+  // to prevent the interval from immediately re-triggering
   const updateActivity = useCallback(() => {
-    setLastActivity(Date.now());
     if (isLockedRef.current) {
       setIsLocked(false);
     }
+    setLastActivity(Date.now());
   }, []);
 
   useEffect(() => {

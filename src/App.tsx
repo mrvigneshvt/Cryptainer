@@ -97,12 +97,25 @@ function App() {
       });
       
       if (selected && Array.isArray(selected)) {
+        let successCount = 0;
+        let failCount = 0;
         for (const path of selected) {
-          await importContainer(path);
+          try {
+            await importContainer(path);
+            successCount++;
+          } catch {
+            failCount++;
+          }
+        }
+        if (failCount > 0) {
+          const msg = failCount === selected.length
+            ? `Import failed for all ${failCount} files`
+            : `Imported ${successCount} file(s), ${failCount} failed`;
+          console.warn(msg);
         }
       }
     } catch (e) {
-      console.error('Import failed:', e);
+      console.error('Import cancelled:', e);
     } finally {
       setIsImporting(false);
     }
@@ -118,12 +131,11 @@ function App() {
         }],
         defaultPath: `${container.name}.ctnr`
       });
-      
       if (path) {
         await exportContainer(container.id, path);
       }
-    } catch (e) {
-      console.error('Export failed:', e);
+    } catch {
+      // Error handled by vaultStore
     }
   };
 
@@ -132,8 +144,8 @@ function App() {
     if (confirm(`Delete "${container.name}"? This cannot be undone.`)) {
       try {
         await deleteContainer(container.id);
-      } catch (e) {
-        console.error('Delete failed:', e);
+      } catch {
+        // Error handled by vaultStore
       }
     }
   };

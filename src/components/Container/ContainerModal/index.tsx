@@ -68,7 +68,7 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
 
       await saveContainerEdits(container.id, password, fileInputs, filesToRemove);
       
-      // Refresh the file list
+      // Refresh the file list — this re-derives Argon2 on the Rust side
       const updatedFiles = await unlockContainer(container.id, password);
       setFiles(updatedFiles);
       setView('open');

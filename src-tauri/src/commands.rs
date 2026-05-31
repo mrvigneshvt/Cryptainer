@@ -82,6 +82,14 @@ pub async fn create_container(
     let total_size: u64 = payload.files.iter().map(|f| f.size).sum();
     let plaintext = serde_json::to_vec(&payload)?;
 
+    // Check for duplicate name
+    let existing = storage::get_container_by_name(&pool, &input.name).await?;
+    if existing.is_some() {
+        return Err(CryptoError::InvalidFormat(
+            "A container with this name already exists".into(),
+        ));
+    }
+
     // Encrypt
     let blob = crypto::encrypt(&plaintext, &password, &input.kdf_params)?;
     let blob_sha256 = crypto::sha256_hex(&blob);
