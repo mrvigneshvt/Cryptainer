@@ -86,7 +86,9 @@ pub fn deserialize(data: &[u8]) -> Result<(ContainerHeader, Vec<u8>)> {
         )));
     }
 
-    let header_len = u32::from_le_bytes(data[6..10].try_into().unwrap()) as usize;
+    let header_len = u32::from_le_bytes(
+        data[6..10].try_into().expect("data[6..10] is always 4 bytes after len check")
+    ) as usize;
     if data.len() < 10 + header_len {
         return Err(CryptoError::InvalidFormat("Truncated header".into()));
     }

@@ -42,8 +42,8 @@ pub async fn insert_container(pool: &SqlitePool, meta: &ContainerMeta) -> Result
     .bind(&kdf_json)
     .bind(&meta.hint)
     .bind(&meta.tags)
-    .bind(meta.file_count as i64)
-    .bind(meta.total_size as i64)
+    .bind(i64::try_from(meta.file_count).unwrap_or(i64::MAX))
+    .bind(i64::try_from(meta.total_size).map_err(|_| CryptoError::InvalidFormat("Container size exceeds maximum representable value".into()))?)
     .bind(&meta.blob_path)
     .bind(&meta.blob_sha256)
     .bind(&meta.created_at)
@@ -91,8 +91,8 @@ pub async fn update_container_blob(
            SET file_count=?, total_size=?, blob_sha256=?, modified_at=?
            WHERE id=?"#,
     )
-    .bind(file_count as i64)
-    .bind(total_size as i64)
+    .bind(i64::try_from(file_count).unwrap_or(i64::MAX))
+    .bind(i64::try_from(total_size).map_err(|_| CryptoError::InvalidFormat("Container size exceeds maximum representable value".into()))?)
     .bind(blob_sha256)
     .bind(&now)
     .bind(id)
