@@ -42,8 +42,11 @@ pub struct FileInput {
 }
 
 /// Helper: validate password minimum length.
+///
+/// Counts Unicode characters (not bytes) to match the frontend's length check,
+/// so a multibyte password isn't accepted on one side and rejected on the other.
 fn validate_password(password: &str) -> std::result::Result<(), CryptoError> {
-    if password.len() < 8 {
+    if password.chars().count() < 8 {
         return Err(CryptoError::InvalidFormat(
             "Password must be at least 8 characters".into(),
         ));
@@ -290,8 +293,13 @@ pub async fn list_containers(
     storage::list_containers(&pool).await
 }
 
-/// Delete a container — removes blob file first, then DB row.
-/// Deleting the blob first prevents orphaned files if the operation fails.
+/// Delete a container — removes the DB row, then the blob file.
+///
+/// The DB row is removed first so a container is never left undeletable: if
+/// the blob file is already gone (manual cleanup, a prior partial failure, or
+/// a DB restored on another machine), an `fs::remove_file` error must not block
+/// removal of the entry. We therefore tolerate `NotFound` on the blob and only
+/// propagate real filesystem errors (e.g. permissions) after the row is gone.
 #[tauri::command]
 pub async fn delete_container(
     container_id: String,
@@ -299,10 +307,14 @@ pub async fn delete_container(
     sessions: State<'_, SessionStore>,
 ) -> std::result::Result<(), CryptoError> {
     let meta = storage::get_container(&pool, &container_id).await?;
-    // Delete blob file FIRST — if this fails, the DB row is untouched
-    std::fs::remove_file(&meta.blob_path)?;
-    // Then remove the DB row
+    // Remove the DB row first — the entry is now gone from the user's vault.
     storage::delete_container(&pool, &container_id).await?;
+    // Then remove the blob; a missing file is fine (it's already gone).
+    match std::fs::remove_file(&meta.blob_path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
     sessions.lock(&container_id);
     Ok(())
 }
@@ -355,10 +367,11 @@ pub async fn import_container(
         return Err(CryptoError::IntegrityFailure);
     }
 
-    // Check for duplicate ID before writing
+    // Check for duplicate ID before writing the blob, so a re-import fails
+    // cleanly with a friendly message instead of a cryptic UNIQUE-constraint
+    // SQL error — and without leaving an orphaned blob on disk.
     let existing = storage::get_container(&pool, &header.id).await;
     if existing.is_ok() {
-        // Blob is already gone from the source — just return the existing meta
         return Err(CryptoError::InvalidFormat(
             "A container with this ID already exists in the vault".into(),
         ));

@@ -36,11 +36,14 @@ export const Modal: React.FC<ModalProps> = ({
       if (e.key === 'Escape') onClose();
     };
     
-    if (open) {
-      document.addEventListener('keydown', handleEscape);
-      incrementOverflow();
-    }
-    
+    // Only register (and therefore only clean up) when actually open, so the
+    // increment/decrement stay paired and the shared counter can't drift below
+    // zero — which would re-enable body scroll while another modal is still open.
+    if (!open) return;
+
+    document.addEventListener('keydown', handleEscape);
+    incrementOverflow();
+
     return () => {
       document.removeEventListener('keydown', handleEscape);
       decrementOverflow();
