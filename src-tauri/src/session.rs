@@ -15,6 +15,8 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 use zeroize::Zeroizing;
 
+use crate::crypto::SALT_LEN;
+
 /// A single active decrypted session for one container.
 pub struct Session {
     /// The decrypted payload held in memory.
@@ -22,6 +24,9 @@ pub struct Session {
     /// The derived AES key, kept for re-encryption during edit mode.
     /// Wrapped in Zeroizing so bytes are wiped on drop.
     pub key: Zeroizing<Vec<u8>>,
+    /// The salt from this container's blob, needed for password verification
+    /// during save_edits before re-encrypting.
+    pub salt: [u8; SALT_LEN],
 }
 
 /// Global session store — keyed by container ID.

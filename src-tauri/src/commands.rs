@@ -19,6 +19,7 @@ use crate::{
     session::{Session, SessionStore},
     export,
     error::CryptoError,
+    crypto::SALT_LEN,
 };
 
 // ── Input types from frontend ─────────────────────────────────────────────────
@@ -40,6 +41,19 @@ pub struct FileInput {
     pub data: Vec<u8>,  // raw bytes from frontend
 }
 
+/// Helper: validate password minimum length.
+///
+/// Counts Unicode characters (not bytes) to match the frontend's length check,
+/// so a multibyte password isn't accepted on one side and rejected on the other.
+fn validate_password(password: &str) -> std::result::Result<(), CryptoError> {
+    if password.chars().count() < 8 {
+        return Err(CryptoError::InvalidFormat(
+            "Password must be at least 8 characters".into(),
+        ));
+    }
+    Ok(())
+}
+
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 /// Create and encrypt a new container.
@@ -50,6 +64,25 @@ pub async fn create_container(
     input: CreateContainerInput,
     pool: State<'_, sqlx::SqlitePool>,
 ) -> std::result::Result<ContainerMeta, CryptoError> {
+    validate_password(&input.password)?;
+    // Validate name, tags, hint
+    if input.name.trim().is_empty() || input.name.len() > 256 {
+        return Err(CryptoError::InvalidFormat(
+            "Container name must be 1-256 characters".into(),
+        ));
+    }
+    if let Some(ref t) = input.tags {
+        if t.len() > 1024 {
+            return Err(CryptoError::InvalidFormat("Tags too long (max 1024)".into()));
+        }
+    }
+    if let Some(ref h) = input.hint {
+        if h.len() > 256 {
+            return Err(CryptoError::InvalidFormat("Hint too long (max 256)".into()));
+        }
+    }
+
+    let password = zeroize::Zeroizing::new(input.password);
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
 
@@ -68,8 +101,16 @@ pub async fn create_container(
     let total_size: u64 = payload.files.iter().map(|f| f.size).sum();
     let plaintext = serde_json::to_vec(&payload)?;
 
+    // Check for duplicate name
+    let existing = storage::get_container_by_name(&pool, &input.name).await?;
+    if existing.is_some() {
+        return Err(CryptoError::InvalidFormat(
+            "A container with this name already exists".into(),
+        ));
+    }
+
     // Encrypt
-    let blob = crypto::encrypt(&plaintext, &input.password, &input.kdf_params)?;
+    let blob = crypto::encrypt(&plaintext, &password, &input.kdf_params)?;
     let blob_sha256 = crypto::sha256_hex(&blob);
 
     // Write blob to app data dir
@@ -89,13 +130,21 @@ pub async fn create_container(
         tags: input.tags,
         file_count: payload.files.len() as u32,
         total_size,
-        blob_path: blob_path.to_string_lossy().to_string(),
+        blob_path: blob_path.to_str()
+            .ok_or_else(|| CryptoError::InvalidFormat("Non-UTF-8 blob path".into()))?
+            .to_string(),
         blob_sha256,
         created_at: now.clone(),
         modified_at: now,
     };
 
-    storage::insert_container(&pool, &meta).await?;
+    // Insert DB — clean up blob on failure to avoid orphaned files
+    storage::insert_container(&pool, &meta).await.or_else(|e| {
+        let _ = std::fs::remove_file(&blob_path);
+        Err(e)
+    })?;
+
+    drop(password);
     Ok(meta)
 }
 
@@ -108,6 +157,9 @@ pub async fn unlock_container(
     pool: State<'_, sqlx::SqlitePool>,
     sessions: State<'_, SessionStore>,
 ) -> std::result::Result<Vec<serde_json::Value>, CryptoError> {
+    validate_password(&password)?;
+    let password = zeroize::Zeroizing::new(password);
+
     let meta = storage::get_container(&pool, &container_id).await?;
     let blob = std::fs::read(&meta.blob_path)?;
 
@@ -125,14 +177,17 @@ pub async fn unlock_container(
         serde_json::json!({ "id": f.id, "name": f.name, "mime": f.mime, "size": f.size })
     }).collect();
 
-    // Derive key separately to store in session for re-encryption
-    let key = {
+    // Derive key and extract salt to store in session
+    let (key, salt_bytes) = {
         let salt = &blob[..crypto::SALT_LEN];
         let key = crypto::derive_key(&password, salt, &meta.kdf_params)?;
-        zeroize::Zeroizing::new(key.as_ref().to_vec())
+        let key = zeroize::Zeroizing::new(key.as_ref().to_vec());
+        let salt_bytes: [u8; SALT_LEN] = salt.try_into().unwrap();
+        (key, salt_bytes)
     };
 
-    sessions.set(container_id, Session { payload, key });
+    sessions.set(container_id, Session { payload, key, salt: salt_bytes });
+    drop(password);
     Ok(file_list)
 }
 
@@ -166,18 +221,34 @@ pub async fn save_edits(
 ) -> std::result::Result<ContainerMeta, CryptoError> {
     let meta = storage::get_container(&pool, &container_id).await?;
 
-    // Scope the mutex lock to ensure it's dropped before await points
+    // Verify password matches the original unlock password
+    // by comparing key derived from save-password + original salt to stored session key
+    let (stored_key, stored_salt) = {
+        let store = sessions.0.lock().unwrap();
+        let session = store.get(&container_id)
+            .ok_or(CryptoError::SessionInactive)?;
+        (session.key.clone(), session.salt)
+    };
+    let verification_key = crypto::derive_key(&password, &stored_salt, &meta.kdf_params)?;
+    if verification_key.as_ref() != stored_key.as_slice() {
+        return Err(CryptoError::Decryption);
+    }
+    drop(verification_key);
+
+    let password = zeroize::Zeroizing::new(password);
+
+    // Scope the mutex lock — clone payload before modifying, so we can
+    // restore on failure and avoid session/disk inconsistency.
     let (total_size, file_count, plaintext) = {
         let mut store = sessions.0.lock().unwrap();
         let session = store.get_mut(&container_id)
             .ok_or(CryptoError::SessionInactive)?;
 
-        // Remove marked files
-        session.payload.files.retain(|f| !file_ids_to_remove.contains(&f.id));
-
-        // Add new files
+        // Clone payload, modify the clone, then swap if encryption succeeds
+        let mut modified_payload = session.payload.clone();
+        modified_payload.files.retain(|f| !file_ids_to_remove.contains(&f.id));
         for f in &files_to_add {
-            session.payload.files.push(VaultFile {
+            modified_payload.files.push(VaultFile {
                 id: Uuid::new_v4().to_string(),
                 name: f.name.clone(),
                 mime: f.mime.clone(),
@@ -186,9 +257,12 @@ pub async fn save_edits(
             });
         }
 
-        let total_size: u64 = session.payload.files.iter().map(|f| f.size).sum();
-        let file_count = session.payload.files.len() as u32;
-        let plaintext = serde_json::to_vec(&session.payload)?;
+        let total_size: u64 = modified_payload.files.iter().map(|f| f.size).sum();
+        let file_count = modified_payload.files.len() as u32;
+        let plaintext = serde_json::to_vec(&modified_payload)?;
+
+        // Swap in the session now that serialization succeeded
+        session.payload = modified_payload;
         
         (total_size, file_count, plaintext)
     }; // MutexGuard dropped here
@@ -205,6 +279,8 @@ pub async fn save_edits(
 
     // Update DB
     storage::update_container_blob(&pool, &container_id, file_count, total_size, &blob_sha256).await?;
+
+    drop(password);
     let updated_meta = storage::get_container(&pool, &container_id).await?;
     Ok(updated_meta)
 }
@@ -217,7 +293,13 @@ pub async fn list_containers(
     storage::list_containers(&pool).await
 }
 
-/// Delete a container — removes DB row and blob file.
+/// Delete a container — removes the DB row, then the blob file.
+///
+/// The DB row is removed first so a container is never left undeletable: if
+/// the blob file is already gone (manual cleanup, a prior partial failure, or
+/// a DB restored on another machine), an `fs::remove_file` error must not block
+/// removal of the entry. We therefore tolerate `NotFound` on the blob and only
+/// propagate real filesystem errors (e.g. permissions) after the row is gone.
 #[tauri::command]
 pub async fn delete_container(
     container_id: String,
@@ -225,8 +307,14 @@ pub async fn delete_container(
     sessions: State<'_, SessionStore>,
 ) -> std::result::Result<(), CryptoError> {
     let meta = storage::get_container(&pool, &container_id).await?;
+    // Remove the DB row first — the entry is now gone from the user's vault.
     storage::delete_container(&pool, &container_id).await?;
-    let _ = std::fs::remove_file(&meta.blob_path);
+    // Then remove the blob; a missing file is fine (it's already gone).
+    match std::fs::remove_file(&meta.blob_path) {
+        Ok(()) => {}
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
+        Err(e) => return Err(e.into()),
+    }
     sessions.lock(&container_id);
     Ok(())
 }
@@ -242,12 +330,19 @@ pub async fn lock_container(
 }
 
 /// Export a container to a .ctnr file at the given path.
+/// Checks that the destination path does not already exist to avoid overwriting.
 #[tauri::command]
 pub async fn export_container(
     container_id: String,
     dest_path: String,
     pool: State<'_, sqlx::SqlitePool>,
 ) -> std::result::Result<(), CryptoError> {
+    // Refuse to overwrite existing files
+    if std::fs::metadata(&dest_path).is_ok() {
+        return Err(CryptoError::InvalidFormat(
+            "Destination file already exists".into(),
+        ));
+    }
     let meta = storage::get_container(&pool, &container_id).await?;
     let blob = std::fs::read(&meta.blob_path)?;
     let ctnr_bytes = export::serialize(&meta, &blob)?;
@@ -256,6 +351,7 @@ pub async fn export_container(
 }
 
 /// Import a .ctnr file into the vault.
+/// Cleans up orphaned blob files if the database insert fails.
 #[tauri::command]
 pub async fn import_container(
     src_path: String,
@@ -269,6 +365,16 @@ pub async fn import_container(
     let actual_sha256 = crypto::sha256_hex(&blob);
     if actual_sha256 != header.blob_sha256 {
         return Err(CryptoError::IntegrityFailure);
+    }
+
+    // Check for duplicate ID before writing the blob, so a re-import fails
+    // cleanly with a friendly message instead of a cryptic UNIQUE-constraint
+    // SQL error — and without leaving an orphaned blob on disk.
+    let existing = storage::get_container(&pool, &header.id).await;
+    if existing.is_ok() {
+        return Err(CryptoError::InvalidFormat(
+            "A container with this ID already exists in the vault".into(),
+        ));
     }
 
     // Write blob to local blobs dir
@@ -289,11 +395,19 @@ pub async fn import_container(
         tags:        header.tags,
         file_count:  header.file_count,
         total_size:  header.total_size,
-        blob_path:   blob_path.to_string_lossy().to_string(),
+        blob_path:   blob_path.to_str()
+            .ok_or_else(|| CryptoError::InvalidFormat("Non-UTF-8 blob path".into()))?
+            .to_string(),
         blob_sha256: header.blob_sha256,
         created_at:  header.created_at,
         modified_at: header.modified_at,
     };
-    storage::insert_container(&pool, &meta).await?;
+
+    // Insert DB — clean up blob on failure to avoid orphaned files
+    storage::insert_container(&pool, &meta).await.or_else(|e| {
+        let _ = std::fs::remove_file(&blob_path);
+        Err(e)
+    })?;
+
     Ok(meta)
 }

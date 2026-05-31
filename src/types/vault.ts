@@ -2,7 +2,7 @@
 // Keep this file in sync with the Rust side whenever structs change.
 
 export interface KdfParams {
-  kdf: 'argon2id' | 'pbkdf2';
+  kdf: 'argon2id';
   memory_kb?: number;
   iterations: number;
   parallelism?: number;

@@ -54,7 +54,8 @@ pub fn serialize(meta: &ContainerMeta, blob: &[u8]) -> Result<Vec<u8>> {
     };
 
     let header_json = serde_json::to_vec(&header)?;
-    let header_len = header_json.len() as u32;
+    let header_len = u32::try_from(header_json.len())
+        .map_err(|_| CryptoError::InvalidFormat("Header too large".into()))?;
 
     let mut out = Vec::with_capacity(10 + header_json.len() + blob.len());
     out.extend_from_slice(MAGIC);
@@ -86,7 +87,9 @@ pub fn deserialize(data: &[u8]) -> Result<(ContainerHeader, Vec<u8>)> {
         )));
     }
 
-    let header_len = u32::from_le_bytes(data[6..10].try_into().unwrap()) as usize;
+    let header_len = u32::from_le_bytes(
+        data[6..10].try_into().expect("data[6..10] is always 4 bytes after len check")
+    ) as usize;
     if data.len() < 10 + header_len {
         return Err(CryptoError::InvalidFormat("Truncated header".into()));
     }
@@ -95,6 +98,7 @@ pub fn deserialize(data: &[u8]) -> Result<(ContainerHeader, Vec<u8>)> {
     let blob = data[10 + header_len..].to_vec();
 
     Ok((header, blob))
+
 }
 
 #[cfg(test)]

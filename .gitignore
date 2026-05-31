@@ -38,12 +38,14 @@ coverage/
 .env.local
 .env.*.local
 
-# Documentation (keep only README.md)
-docs/
-!docs/.gitkeep
+# Keep all documentation in git
+!docs/
 
 # Tauri specific
 src-tauri/target/
 
 # OS files
 Thumbs.db
+
+# Subagent chain run artifacts
+.pi/chain/

@@ -2,6 +2,20 @@ import React, { useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import './Modal.css';
 
+// Track open modal count to prevent body overflow conflicts
+// when multiple modals are stacked (e.g., Settings + ContainerModal).
+let openModalCount = 0;
+function incrementOverflow() {
+  openModalCount++;
+  document.body.style.overflow = 'hidden';
+}
+function decrementOverflow() {
+  openModalCount--;
+  if (openModalCount <= 0) {
+    document.body.style.overflow = '';
+  }
+}
+
 interface ModalProps {
   open: boolean;
   onClose: () => void;
@@ -22,14 +36,17 @@ export const Modal: React.FC<ModalProps> = ({
       if (e.key === 'Escape') onClose();
     };
     
-    if (open) {
-      document.addEventListener('keydown', handleEscape);
-      document.body.style.overflow = 'hidden';
-    }
-    
+    // Only register (and therefore only clean up) when actually open, so the
+    // increment/decrement stay paired and the shared counter can't drift below
+    // zero — which would re-enable body scroll while another modal is still open.
+    if (!open) return;
+
+    document.addEventListener('keydown', handleEscape);
+    incrementOverflow();
+
     return () => {
       document.removeEventListener('keydown', handleEscape);
-      document.body.style.overflow = '';
+      decrementOverflow();
     };
   }, [open, onClose]);
 

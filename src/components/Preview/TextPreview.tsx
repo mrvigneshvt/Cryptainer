@@ -45,12 +45,19 @@ const CODE_EXTENSIONS: Record<string, string> = {
 
 export const TextPreview: React.FC<TextPreviewProps> = ({ data, name }) => {
   const { text, language } = useMemo(() => {
-    const decoder = new TextDecoder('utf-8');
-    const text = decoder.decode(data);
-    
+    // Try a strict decode first so we can detect invalid UTF-8, but fall back
+    // to a lossy decode (replacement chars) instead of throwing — there is no
+    // error boundary above this component, so a throw would white-screen the app.
+    let text: string;
+    try {
+      text = new TextDecoder('utf-8', { fatal: true }).decode(data);
+    } catch {
+      text = new TextDecoder('utf-8').decode(data);
+    }
+
     const ext = name.split('.').pop()?.toLowerCase() || '';
     const lang = CODE_EXTENSIONS[ext] || 'text';
-    
+
     return { text, language: lang };
   }, [data, name]);
 

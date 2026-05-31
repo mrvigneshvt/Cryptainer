@@ -42,8 +42,8 @@ pub async fn insert_container(pool: &SqlitePool, meta: &ContainerMeta) -> Result
     .bind(&kdf_json)
     .bind(&meta.hint)
     .bind(&meta.tags)
-    .bind(meta.file_count as i64)
-    .bind(meta.total_size as i64)
+    .bind(i64::try_from(meta.file_count).unwrap_or(i64::MAX))
+    .bind(i64::try_from(meta.total_size).map_err(|_| CryptoError::InvalidFormat("Container size exceeds maximum representable value".into()))?)
     .bind(&meta.blob_path)
     .bind(&meta.blob_sha256)
     .bind(&meta.created_at)
@@ -91,8 +91,8 @@ pub async fn update_container_blob(
            SET file_count=?, total_size=?, blob_sha256=?, modified_at=?
            WHERE id=?"#,
     )
-    .bind(file_count as i64)
-    .bind(total_size as i64)
+    .bind(i64::try_from(file_count).unwrap_or(i64::MAX))
+    .bind(i64::try_from(total_size).map_err(|_| CryptoError::InvalidFormat("Container size exceeds maximum representable value".into()))?)
     .bind(blob_sha256)
     .bind(&now)
     .bind(id)
@@ -109,6 +109,37 @@ pub async fn delete_container(pool: &SqlitePool, id: &str) -> Result<()> {
         return Err(CryptoError::NotFound(id.to_string()));
     }
     Ok(())
+}
+
+/// Check if a container with the given name already exists.
+pub async fn get_container_by_name(pool: &SqlitePool, name: &str) -> Result<Option<ContainerMeta>> {
+    let r = sqlx::query_as::<_, ContainerMetaRow>(
+        r#"SELECT id, name, algo, kdf_params, hint, tags,
+                  file_count, total_size, blob_path, blob_sha256,
+                  created_at, modified_at
+           FROM containers WHERE name=?
+           LIMIT 1"#
+    )
+    .bind(name)
+    .fetch_optional(pool).await?;
+
+    match r {
+        Some(row) => Ok(Some(ContainerMeta {
+            id: row.id,
+            name: row.name,
+            algo: row.algo,
+            kdf_params: serde_json::from_str(&row.kdf_params)?,
+            hint: row.hint,
+            tags: row.tags,
+            file_count: row.file_count as u32,
+            total_size: row.total_size as u64,
+            blob_path: row.blob_path,
+            blob_sha256: row.blob_sha256,
+            created_at: row.created_at,
+            modified_at: row.modified_at,
+        })),
+        None => Ok(None),
+    }
 }
 
 /// Fetch a single container by ID.
