@@ -62,6 +62,22 @@ pub async fn create_container(
     pool: State<'_, sqlx::SqlitePool>,
 ) -> std::result::Result<ContainerMeta, CryptoError> {
     validate_password(&input.password)?;
+    // Validate name, tags, hint
+    if input.name.trim().is_empty() || input.name.len() > 256 {
+        return Err(CryptoError::InvalidFormat(
+            "Container name must be 1-256 characters".into(),
+        ));
+    }
+    if let Some(ref t) = input.tags {
+        if t.len() > 1024 {
+            return Err(CryptoError::InvalidFormat("Tags too long (max 1024)".into()));
+        }
+    }
+    if let Some(ref h) = input.hint {
+        if h.len() > 256 {
+            return Err(CryptoError::InvalidFormat("Hint too long (max 256)".into()));
+        }
+    }
 
     let password = zeroize::Zeroizing::new(input.password);
     let id = Uuid::new_v4().to_string();
@@ -111,7 +127,9 @@ pub async fn create_container(
         tags: input.tags,
         file_count: payload.files.len() as u32,
         total_size,
-        blob_path: blob_path.to_string_lossy().to_string(),
+        blob_path: blob_path.to_str()
+            .ok_or_else(|| CryptoError::InvalidFormat("Non-UTF-8 blob path".into()))?
+            .to_string(),
         blob_sha256,
         created_at: now.clone(),
         modified_at: now,
@@ -337,6 +355,15 @@ pub async fn import_container(
         return Err(CryptoError::IntegrityFailure);
     }
 
+    // Check for duplicate ID before writing
+    let existing = storage::get_container(&pool, &header.id).await;
+    if existing.is_ok() {
+        // Blob is already gone from the source — just return the existing meta
+        return Err(CryptoError::InvalidFormat(
+            "A container with this ID already exists in the vault".into(),
+        ));
+    }
+
     // Write blob to local blobs dir
     let blobs_dir = app.path().app_data_dir()
         .map_err(|e| CryptoError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
@@ -355,7 +382,9 @@ pub async fn import_container(
         tags:        header.tags,
         file_count:  header.file_count,
         total_size:  header.total_size,
-        blob_path:   blob_path.to_string_lossy().to_string(),
+        blob_path:   blob_path.to_str()
+            .ok_or_else(|| CryptoError::InvalidFormat("Non-UTF-8 blob path".into()))?
+            .to_string(),
         blob_sha256: header.blob_sha256,
         created_at:  header.created_at,
         modified_at: header.modified_at,
