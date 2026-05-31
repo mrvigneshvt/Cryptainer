@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 
 interface AutoLockOptions {
   timeout: number | null; // null means never
@@ -12,6 +12,8 @@ export const useAutoLock = (onLock: () => void) => {
   const [options, setOptions] = useState<AutoLockOptions>(DEFAULT_AUTO_LOCK);
   const [lastActivity, setLastActivity] = useState(Date.now());
   const [isLocked, setIsLocked] = useState(false);
+  const isLockedRef = useRef(isLocked);
+  useEffect(() => { isLockedRef.current = isLocked; });
 
   // Load settings from localStorage
   useEffect(() => {
@@ -30,10 +32,11 @@ export const useAutoLock = (onLock: () => void) => {
 
   // Track user activity
   const updateActivity = useCallback(() => {
-    if (!isLocked) {
-      setLastActivity(Date.now());
+    setLastActivity(Date.now());
+    if (isLockedRef.current) {
+      setIsLocked(false);
     }
-  }, [isLocked]);
+  }, []);
 
   useEffect(() => {
     const events = ['mousedown', 'keydown', 'touchstart', 'scroll'];
