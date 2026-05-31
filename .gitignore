@@ -46,3 +46,6 @@ src-tauri/target/
 
 # OS files
 Thumbs.db
+
+# Subagent chain run artifacts
+.pi/chain/
