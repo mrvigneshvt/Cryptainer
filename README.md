@@ -1,4 +1,4 @@
-# Cryptainer
+# Cryptainer - V2 coming soon
 
 > **Offline Encrypted Container Manager** - Securely store and manage your files with military-grade encryption
 
