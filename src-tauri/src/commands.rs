@@ -10,13 +10,14 @@ use tauri::{AppHandle, Manager, State};
 use uuid::Uuid;
 use chrono::Utc;
 use std::path::PathBuf;
+use rand::RngCore;
 // Note: AsyncMutex and Arc will be used in future features
 
 use crate::{
     crypto::{self, KdfParams},
     storage,
-    vault::{ContainerMeta, ContainerPayload, VaultFile},
-    session::{Session, SessionStore},
+    vault::{ContainerMeta, ContainerPayload, VaultFile, ContainerMetadataV2, FileMetadata},
+    session::{Session, SessionStore, SessionStoreV2},
     export,
     error::CryptoError,
     crypto::SALT_LEN,
@@ -56,8 +57,9 @@ fn validate_password(password: &str) -> std::result::Result<(), CryptoError> {
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
-/// Create and encrypt a new container.
-/// Encrypts all files, writes blob to disk, inserts metadata into SQLite.
+/// Create and encrypt a new container (v2 per-file encryption).
+/// Encrypts each file individually, builds a v2 blob, writes to disk,
+/// inserts metadata into SQLite.
 #[tauri::command]
 pub async fn create_container(
     app: AppHandle,
@@ -65,7 +67,6 @@ pub async fn create_container(
     pool: State<'_, sqlx::SqlitePool>,
 ) -> std::result::Result<ContainerMeta, CryptoError> {
     validate_password(&input.password)?;
-    // Validate name, tags, hint
     if input.name.trim().is_empty() || input.name.len() > 256 {
         return Err(CryptoError::InvalidFormat(
             "Container name must be 1-256 characters".into(),
@@ -86,22 +87,6 @@ pub async fn create_container(
     let id = Uuid::new_v4().to_string();
     let now = Utc::now().to_rfc3339();
 
-    // Build the plaintext payload
-    let payload = ContainerPayload {
-        version: 1,
-        files: input.files.iter().map(|f| VaultFile {
-            id: Uuid::new_v4().to_string(),
-            name: f.name.clone(),
-            mime: f.mime.clone(),
-            size: f.data.len() as u64,
-            data: f.data.clone(),
-        }).collect(),
-    };
-
-    let total_size: u64 = payload.files.iter().map(|f| f.size).sum();
-    let plaintext = serde_json::to_vec(&payload)?;
-
-    // Check for duplicate name
     let existing = storage::get_container_by_name(&pool, &input.name).await?;
     if existing.is_some() {
         return Err(CryptoError::InvalidFormat(
@@ -109,11 +94,67 @@ pub async fn create_container(
         ));
     }
 
-    // Encrypt
-    let blob = crypto::encrypt(&plaintext, &password, &input.kdf_params)?;
+    // 1. Derive key
+    let mut salt = [0u8; SALT_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut salt);
+    let key = crypto::derive_key(&password, &salt, &input.kdf_params)?;
+
+    // 2. Encrypt each file individually, collect metadata (offsets filled later)
+    let total_size: u64 = input.files.iter().map(|f| f.data.len() as u64).sum();
+    let mut files_meta: Vec<FileMetadata> = Vec::with_capacity(input.files.len());
+    let mut encrypted_files: Vec<Vec<u8>> = Vec::with_capacity(input.files.len());
+
+    for f in &input.files {
+        let sha256 = crypto::sha256_hex(&f.data);
+        let (encrypted, nonce) = crypto::encrypt_section(&f.data, &*key)?;
+        files_meta.push(FileMetadata {
+            id: Uuid::new_v4().to_string(),
+            name: f.name.clone(),
+            mime: f.mime.clone(),
+            size: f.data.len() as u64,
+            offset: 0,
+            data_nonce: nonce,
+            sha256,
+            chunks: None,
+        });
+        encrypted_files.push(encrypted);
+    }
+
+    // 3. Compute metadata section and calculate file offsets
+    let mut metadata_v2 = ContainerMetadataV2 { version: 2, files: files_meta };
+    let metadata_json = serde_json::to_vec(&metadata_v2)?;
+    let (encrypted_metadata, _metadata_nonce) = crypto::encrypt_section(&metadata_json, &*key)?;
+
+    // Layout: salt (16) | metadata_len (4) | metadata_nonce (12) | metadata_ciphertext | file1 | file2 | ...
+    let metadata_section_len = 4 + crypto::NONCE_LEN + encrypted_metadata.len();
+    let mut current_offset = SALT_LEN + metadata_section_len;
+
+    for (i, fm) in metadata_v2.files.iter_mut().enumerate() {
+        fm.offset = current_offset as u64;
+        current_offset += encrypted_files[i].len();
+    }
+
+    // 4. Re-encrypt metadata with correct offsets
+    let metadata_json_final = serde_json::to_vec(&metadata_v2)?;
+    let (encrypted_metadata_final, metadata_nonce_final) = crypto::encrypt_section(&metadata_json_final, &*key)?;
+
+    // 5. Assemble blob
+    let metadata_section_len_final = 4 + crypto::NONCE_LEN + encrypted_metadata_final.len();
+    let file_data_len: usize = encrypted_files.iter().map(|e| e.len()).sum();
+    let blob_total_len = SALT_LEN + metadata_section_len_final + file_data_len;
+
+    let mut blob = Vec::with_capacity(blob_total_len);
+    blob.extend_from_slice(&salt);
+    blob.extend_from_slice(&(encrypted_metadata_final.len() as u32).to_le_bytes());
+    blob.extend_from_slice(&metadata_nonce_final);
+    blob.extend_from_slice(&encrypted_metadata_final);
+    for ef in &encrypted_files {
+        blob.extend_from_slice(ef);
+    }
+
     let blob_sha256 = crypto::sha256_hex(&blob);
 
-    // Write blob to app data dir
+    // 6. Write blob to disk
     let blobs_dir = app.path().app_data_dir()
         .map_err(|e| CryptoError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
         .join("blobs");
@@ -128,7 +169,7 @@ pub async fn create_container(
         kdf_params: input.kdf_params,
         hint: input.hint,
         tags: input.tags,
-        file_count: payload.files.len() as u32,
+        file_count: encrypted_files.len() as u32,
         total_size,
         blob_path: blob_path.to_str()
             .ok_or_else(|| CryptoError::InvalidFormat("Non-UTF-8 blob path".into()))?
@@ -136,10 +177,9 @@ pub async fn create_container(
         blob_sha256,
         created_at: now.clone(),
         modified_at: now,
-        format_version: 1,
+        format_version: 2,
     };
 
-    // Insert DB — clean up blob on failure to avoid orphaned files
     storage::insert_container(&pool, &meta).await.or_else(|e| {
         let _ = std::fs::remove_file(&blob_path);
         Err(e)
@@ -210,7 +250,7 @@ pub async fn get_file_data(
 }
 
 /// Save edits to an unlocked container (add/remove files) and re-encrypt.
-/// Uses atomic write: writes to a .tmp file first, then renames.
+/// Supports both v1 (legacy single-encryption) and v2 (per-file encryption).
 #[tauri::command]
 pub async fn save_edits(
     container_id: String,
@@ -219,11 +259,28 @@ pub async fn save_edits(
     file_ids_to_remove: Vec<String>,
     pool: State<'_, sqlx::SqlitePool>,
     sessions: State<'_, SessionStore>,
+    sessions_v2: State<'_, SessionStoreV2>,
 ) -> std::result::Result<ContainerMeta, CryptoError> {
     let meta = storage::get_container(&pool, &container_id).await?;
 
+    if meta.format_version == 2 {
+        save_edits_v2(container_id, password, files_to_add, file_ids_to_remove, meta, pool, sessions_v2).await
+    } else {
+        save_edits_v1(container_id, password, files_to_add, file_ids_to_remove, meta, pool, sessions).await
+    }
+}
+
+/// V1 save_edits — legacy flow for containers encrypted as a single blob.
+async fn save_edits_v1(
+    container_id: String,
+    password: String,
+    files_to_add: Vec<FileInput>,
+    file_ids_to_remove: Vec<String>,
+    meta: ContainerMeta,
+    pool: State<'_, sqlx::SqlitePool>,
+    sessions: State<'_, SessionStore>,
+) -> std::result::Result<ContainerMeta, CryptoError> {
     // Verify password matches the original unlock password
-    // by comparing key derived from save-password + original salt to stored session key
     let (stored_key, stored_salt) = {
         let store = sessions.0.lock().unwrap();
         let session = store.get(&container_id)
@@ -238,14 +295,11 @@ pub async fn save_edits(
 
     let password = zeroize::Zeroizing::new(password);
 
-    // Scope the mutex lock — clone payload before modifying, so we can
-    // restore on failure and avoid session/disk inconsistency.
     let (total_size, file_count, plaintext) = {
         let mut store = sessions.0.lock().unwrap();
         let session = store.get_mut(&container_id)
             .ok_or(CryptoError::SessionInactive)?;
 
-        // Clone payload, modify the clone, then swap if encryption succeeds
         let mut modified_payload = session.payload.clone();
         modified_payload.files.retain(|f| !file_ids_to_remove.contains(&f.id));
         for f in &files_to_add {
@@ -262,28 +316,160 @@ pub async fn save_edits(
         let file_count = modified_payload.files.len() as u32;
         let plaintext = serde_json::to_vec(&modified_payload)?;
 
-        // Swap in the session now that serialization succeeded
         session.payload = modified_payload;
-        
-        (total_size, file_count, plaintext)
-    }; // MutexGuard dropped here
 
-    // Re-encrypt with same password (new random salt + nonce)
+        (total_size, file_count, plaintext)
+    };
+
     let blob = crypto::encrypt(&plaintext, &password, &meta.kdf_params)?;
     let blob_sha256 = crypto::sha256_hex(&blob);
 
-    // Atomic write: tmp → rename
-    let blob_path = PathBuf::from(&meta.blob_path);
-    let tmp_path = blob_path.with_extension("enc.tmp");
-    std::fs::write(&tmp_path, &blob)?;
-    std::fs::rename(&tmp_path, &blob_path)?;
-
-    // Update DB
+    atomic_write_blob(&meta.blob_path, &blob)?;
     storage::update_container_blob(&pool, &container_id, file_count, total_size, &blob_sha256).await?;
 
     drop(password);
     let updated_meta = storage::get_container(&pool, &container_id).await?;
     Ok(updated_meta)
+}
+
+/// V2 save_edits — per-file encryption flow. Re-encrypts every file.
+async fn save_edits_v2(
+    container_id: String,
+    password: String,
+    files_to_add: Vec<FileInput>,
+    file_ids_to_remove: Vec<String>,
+    meta: ContainerMeta,
+    pool: State<'_, sqlx::SqlitePool>,
+    sessions_v2: State<'_, SessionStoreV2>,
+) -> std::result::Result<ContainerMeta, CryptoError> {
+    // Lock session to extract key, salt, and metadata
+    let (key_arr, salt, old_metadata) = {
+        let store = sessions_v2.0.lock().unwrap();
+        let session = store.get(&container_id)
+            .ok_or(CryptoError::SessionInactive)?;
+        let mut key = [0u8; 32];
+        key.copy_from_slice(session.key.as_ref());
+        (zeroize::Zeroizing::new(key), session.salt, session.metadata.clone())
+    };
+
+    // Verify password
+    let verification_key = crypto::derive_key(&password, &salt, &meta.kdf_params)?;
+    if verification_key.as_ref() != &*key_arr {
+        return Err(CryptoError::Decryption);
+    }
+    drop(verification_key);
+
+    // Read existing blob
+    let blob = std::fs::read(&meta.blob_path)?;
+
+    // Decrypt remaining files (not removed), re-encrypt with new nonces
+    let mut new_meta: Vec<FileMetadata> = Vec::new();
+    let mut encrypted_parts: Vec<Vec<u8>> = Vec::new();
+    let mut total_size: u64 = 0;
+
+    for fm in &old_metadata.files {
+        if file_ids_to_remove.contains(&fm.id) {
+            continue;
+        }
+        let offset = fm.offset as usize;
+        let enc_len = fm.size as usize + 16;
+        if offset + enc_len > blob.len() {
+            return Err(CryptoError::IntegrityFailure);
+        }
+        let plaintext = crypto::decrypt_section(&blob[offset..offset + enc_len], &*key_arr, &fm.data_nonce)?;
+        let sha256 = crypto::sha256_hex(&plaintext);
+        let (new_enc, new_nonce) = crypto::encrypt_section(&plaintext, &*key_arr)?;
+
+        new_meta.push(FileMetadata {
+            id: fm.id.clone(),
+            name: fm.name.clone(),
+            mime: fm.mime.clone(),
+            size: fm.size,
+            offset: 0,
+            data_nonce: new_nonce,
+            sha256,
+            chunks: fm.chunks.clone(),
+        });
+        total_size += fm.size;
+        encrypted_parts.push(new_enc);
+    }
+
+    // Encrypt new files
+    for f in &files_to_add {
+        let sha256 = crypto::sha256_hex(&f.data);
+        let (enc, nonce) = crypto::encrypt_section(&f.data, &*key_arr)?;
+        new_meta.push(FileMetadata {
+            id: Uuid::new_v4().to_string(),
+            name: f.name.clone(),
+            mime: f.mime.clone(),
+            size: f.data.len() as u64,
+            offset: 0,
+            data_nonce: nonce,
+            sha256,
+            chunks: None,
+        });
+        total_size += f.data.len() as u64;
+        encrypted_parts.push(enc);
+    }
+
+    // Calculate offsets — first encrypt metadata to get its size
+    let mut metadata_v2 = ContainerMetadataV2 { version: 2, files: new_meta };
+    let metadata_json = serde_json::to_vec(&metadata_v2)?;
+    let (enc_meta, _meta_nonce) = crypto::encrypt_section(&metadata_json, &*key_arr)?;
+
+    // Compute final offsets for each file in metadata
+    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta.len();
+    let mut offset = SALT_LEN + meta_section_len;
+    for (i, fm) in metadata_v2.files.iter_mut().enumerate() {
+        fm.offset = offset as u64;
+        offset += encrypted_parts[i].len();
+    }
+
+    // Re-encrypt metadata with correct offsets
+    let metadata_json = serde_json::to_vec(&metadata_v2)?;
+    let (enc_meta, meta_nonce) = crypto::encrypt_section(&metadata_json, &*key_arr)?;
+
+    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta.len();
+    let file_data_len: usize = encrypted_parts.iter().map(|e| e.len()).sum();
+
+    // Assemble v2 blob
+    let mut new_blob = Vec::with_capacity(SALT_LEN + meta_section_len + file_data_len);
+    new_blob.extend_from_slice(&salt);
+    new_blob.extend_from_slice(&(enc_meta.len() as u32).to_le_bytes());
+    new_blob.extend_from_slice(&meta_nonce);
+    new_blob.extend_from_slice(&enc_meta);
+    for ef in &encrypted_parts {
+        new_blob.extend_from_slice(ef);
+    }
+
+    let blob_sha256 = crypto::sha256_hex(&new_blob);
+
+    // Atomic write
+    atomic_write_blob(&meta.blob_path, &new_blob)?;
+
+    // Update DB
+    let file_count = metadata_v2.files.len() as u32;
+    storage::update_container_blob(&pool, &container_id, file_count, total_size, &blob_sha256).await?;
+
+    // Update session metadata
+    {
+        let mut store = sessions_v2.0.lock().unwrap();
+        if let Some(session) = store.get_mut(&container_id) {
+            session.metadata = metadata_v2;
+        }
+    }
+
+    let updated_meta = storage::get_container(&pool, &container_id).await?;
+    Ok(updated_meta)
+}
+
+/// Atomic blob write: tmp → rename.
+fn atomic_write_blob(path: &str, data: &[u8]) -> std::result::Result<(), CryptoError> {
+    let blob_path = PathBuf::from(path);
+    let tmp_path = blob_path.with_extension("enc.tmp");
+    std::fs::write(&tmp_path, data)?;
+    std::fs::rename(&tmp_path, &blob_path)?;
+    Ok(())
 }
 
 /// List all containers (metadata only — no blobs, no keys).
