@@ -143,6 +143,41 @@ pub fn decrypt(blob: &[u8], password: &str, params: &KdfParams) -> Result<Vec<u8
         .map_err(|_| CryptoError::Decryption)
 }
 
+/// Encrypt a section (file, chunk, or metadata) with AES-256-GCM using a provided key.
+///
+/// Generates a random 12-byte nonce and returns `(ciphertext_with_tag, nonce)`.
+/// The nonce must be stored alongside the ciphertext for later decryption.
+pub fn encrypt_section(plaintext: &[u8], key: &[u8; KEY_LEN]) -> Result<(Vec<u8>, [u8; NONCE_LEN])> {
+    let mut nonce_bytes = [0u8; NONCE_LEN];
+    OsRng.fill_bytes(&mut nonce_bytes);
+
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let nonce = Nonce::from_slice(&nonce_bytes);
+
+    let ciphertext = cipher
+        .encrypt(nonce, plaintext)
+        .map_err(|e| CryptoError::Encryption(e.to_string()))?;
+
+    Ok((ciphertext, nonce_bytes))
+}
+
+/// Decrypt a section encrypted by `encrypt_section`.
+///
+/// Verifies the GCM authentication tag. Returns `CryptoError::Decryption` on
+/// wrong key, wrong nonce, or tampered ciphertext.
+pub fn decrypt_section(
+    ciphertext: &[u8],
+    key: &[u8; KEY_LEN],
+    nonce: &[u8; NONCE_LEN],
+) -> Result<Vec<u8>> {
+    let cipher = Aes256Gcm::new(Key::<Aes256Gcm>::from_slice(key));
+    let nonce = Nonce::from_slice(nonce);
+
+    cipher
+        .decrypt(nonce, ciphertext)
+        .map_err(|_| CryptoError::Decryption)
+}
+
 /// Compute SHA-256 of data and return as a lowercase hex string.
 /// Used for the integrity checksum stored in the container header.
 pub fn sha256_hex(data: &[u8]) -> String {
@@ -209,5 +244,41 @@ mod tests {
         let blob2 = encrypt(b"same plaintext", "same password", &params).unwrap();
         // Same plaintext + password must produce different ciphertexts (random salt/nonce)
         assert_ne!(blob1, blob2);
+    }
+
+    #[test]
+    fn section_roundtrip() {
+        let key = [42u8; KEY_LEN];
+        let plaintext = b"per-file encrypted data";
+        let (ciphertext, nonce) = encrypt_section(plaintext, &key).unwrap();
+        let recovered = decrypt_section(&ciphertext, &key, &nonce).unwrap();
+        assert_eq!(plaintext.as_ref(), recovered.as_slice());
+    }
+
+    #[test]
+    fn section_wrong_nonce_fails() {
+        let key = [42u8; KEY_LEN];
+        let (ciphertext, _nonce) = encrypt_section(b"secret", &key).unwrap();
+        let wrong_nonce = [0u8; NONCE_LEN];
+        let result = decrypt_section(&ciphertext, &key, &wrong_nonce);
+        assert!(matches!(result, Err(CryptoError::Decryption)));
+    }
+
+    #[test]
+    fn section_tampered_ciphertext_fails() {
+        let key = [42u8; KEY_LEN];
+        let (mut ciphertext, nonce) = encrypt_section(b"secret", &key).unwrap();
+        let last = ciphertext.len() - 1;
+        ciphertext[last] ^= 0xFF;
+        let result = decrypt_section(&ciphertext, &key, &nonce);
+        assert!(matches!(result, Err(CryptoError::Decryption)));
+    }
+
+    #[test]
+    fn section_unique_nonces_per_call() {
+        let key = [42u8; KEY_LEN];
+        let (_, n1) = encrypt_section(b"data", &key).unwrap();
+        let (_, n2) = encrypt_section(b"data", &key).unwrap();
+        assert_ne!(n1, n2);
     }
 }
