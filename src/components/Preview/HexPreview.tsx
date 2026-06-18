@@ -1,14 +1,23 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
+import { useVaultStore } from '../../store/vaultStore';
 import './HexPreview.css';
 
 interface HexPreviewProps {
   data: Uint8Array;
+  containerId: string;
+  fileId: string;
 }
 
 const BYTES_PER_ROW = 16;
 const MAX_PREVIEW_BYTES = 4096; // First 4KB
 
-export const HexPreview: React.FC<HexPreviewProps> = ({ data }) => {
+export const HexPreview: React.FC<HexPreviewProps> = ({ data, containerId, fileId }) => {
+  const { releaseFileData } = useVaultStore();
+
+  useEffect(() => {
+    return () => { releaseFileData(containerId, fileId); };
+  }, [containerId, fileId]);
+
   const hexRows = useMemo(() => {
     const preview = data.slice(0, MAX_PREVIEW_BYTES);
     const rows: { offset: string; hex: string; ascii: string }[] = [];

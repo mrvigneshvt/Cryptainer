@@ -32,8 +32,8 @@ pub async fn insert_container(pool: &SqlitePool, meta: &ContainerMeta) -> Result
     sqlx::query(
         r#"INSERT INTO containers
            (id, name, algo, kdf, kdf_params, hint, tags, file_count, total_size,
-            blob_path, blob_sha256, created_at, modified_at)
-           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
+            blob_path, blob_sha256, created_at, modified_at, format_version)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"#,
     )
     .bind(&meta.id)
     .bind(&meta.name)
@@ -48,6 +48,7 @@ pub async fn insert_container(pool: &SqlitePool, meta: &ContainerMeta) -> Result
     .bind(&meta.blob_sha256)
     .bind(&meta.created_at)
     .bind(&meta.modified_at)
+    .bind(meta.format_version as i64)
     .execute(pool).await?;
     Ok(())
 }
@@ -57,7 +58,7 @@ pub async fn list_containers(pool: &SqlitePool) -> Result<Vec<ContainerMeta>> {
     let rows = sqlx::query_as::<_, ContainerMetaRow>(
         r#"SELECT id, name, algo, kdf_params, hint, tags,
                   file_count, total_size, blob_path, blob_sha256,
-                  created_at, modified_at
+                  created_at, modified_at, format_version
            FROM containers ORDER BY created_at DESC"#
     )
     .fetch_all(pool).await?;
@@ -76,6 +77,7 @@ pub async fn list_containers(pool: &SqlitePool) -> Result<Vec<ContainerMeta>> {
             blob_sha256: r.blob_sha256,
             created_at: r.created_at,
             modified_at: r.modified_at,
+            format_version: r.format_version as u8,
         })
     }).collect()
 }
@@ -100,6 +102,15 @@ pub async fn update_container_blob(
     Ok(())
 }
 
+/// Update the format_version for a container after v1→v2 migration.
+pub async fn update_container_format_version(pool: &SqlitePool, id: &str, version: u8) -> Result<()> {
+    sqlx::query("UPDATE containers SET format_version=? WHERE id=?")
+        .bind(version as i64)
+        .bind(id)
+        .execute(pool).await?;
+    Ok(())
+}
+
 /// Delete a container row by ID. Blob file deletion is handled by vault.rs.
 pub async fn delete_container(pool: &SqlitePool, id: &str) -> Result<()> {
     let result = sqlx::query("DELETE FROM containers WHERE id=?")
@@ -116,7 +127,7 @@ pub async fn get_container_by_name(pool: &SqlitePool, name: &str) -> Result<Opti
     let r = sqlx::query_as::<_, ContainerMetaRow>(
         r#"SELECT id, name, algo, kdf_params, hint, tags,
                   file_count, total_size, blob_path, blob_sha256,
-                  created_at, modified_at
+                  created_at, modified_at, format_version
            FROM containers WHERE name=?
            LIMIT 1"#
     )
@@ -137,6 +148,7 @@ pub async fn get_container_by_name(pool: &SqlitePool, name: &str) -> Result<Opti
             blob_sha256: row.blob_sha256,
             created_at: row.created_at,
             modified_at: row.modified_at,
+            format_version: row.format_version as u8,
         })),
         None => Ok(None),
     }
@@ -147,7 +159,7 @@ pub async fn get_container(pool: &SqlitePool, id: &str) -> Result<ContainerMeta>
     let r = sqlx::query_as::<_, ContainerMetaRow>(
         r#"SELECT id, name, algo, kdf_params, hint, tags,
                   file_count, total_size, blob_path, blob_sha256,
-                  created_at, modified_at
+                  created_at, modified_at, format_version
            FROM containers WHERE id=?"#
     )
     .bind(id)
@@ -167,6 +179,7 @@ pub async fn get_container(pool: &SqlitePool, id: &str) -> Result<ContainerMeta>
         blob_sha256: r.blob_sha256,
         created_at: r.created_at,
         modified_at: r.modified_at,
+        format_version: r.format_version as u8,
     })
 }
 
@@ -184,4 +197,5 @@ struct ContainerMetaRow {
     blob_sha256: String,
     created_at: String,
     modified_at: String,
+    format_version: i64,
 }

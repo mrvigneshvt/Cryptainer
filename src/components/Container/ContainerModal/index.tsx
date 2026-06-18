@@ -26,7 +26,9 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
   const [previewData, setPreviewData] = useState<Uint8Array | null>(null);
   const viewRef = useRef(view);
   useEffect(() => { viewRef.current = view; });
-  const { unlockContainer, lockContainer, getFileData, saveContainerEdits } = useVaultStore();
+  const previewFileRef = useRef(previewFile);
+  useEffect(() => { previewFileRef.current = previewFile; });
+  const { unlockContainer, lockContainer, getFileData, saveContainerEdits, releaseFileData } = useVaultStore();
 
   const handleUnlock = async (password: string) => {
     setIsLoading(true);
@@ -42,6 +44,12 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
   };
 
   const handleLock = async () => {
+    // Release cached file data before locking
+    if (previewFile) {
+      releaseFileData(container.id, previewFile.id);
+      setPreviewFile(null);
+      setPreviewData(null);
+    }
     await lockContainer(container.id);
     setView('locked');
     setFiles([]);
@@ -94,6 +102,9 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
   };
 
   const handleClosePreview = () => {
+    if (previewFile) {
+      releaseFileData(container.id, previewFile.id);
+    }
     setPreviewFile(null);
     setPreviewData(null);
     setView('open');
@@ -101,7 +112,9 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
 
   useEffect(() => {
     return () => {
-      // Lock container when modal closes — use ref to avoid stale closure
+      if (previewFileRef.current) {
+        releaseFileData(container.id, previewFileRef.current.id);
+      }
       if (viewRef.current !== 'locked') {
         lockContainer(container.id);
       }
@@ -151,6 +164,8 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
                 mime={previewFile.mime}
                 data={previewData}
                 name={previewFile.name}
+                containerId={container.id}
+                fileId={previewFile.id}
               />
             </div>
           </div>
