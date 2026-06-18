@@ -1,0 +1,1 @@
+ALTER TABLE containers ADD COLUMN format_version INTEGER NOT NULL DEFAULT 1;
