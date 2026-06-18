@@ -1,10 +1,13 @@
-import React, { useMemo } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Highlight, themes } from 'prism-react-renderer';
+import { useVaultStore } from '../../store/vaultStore';
 import './TextPreview.css';
 
 interface TextPreviewProps {
   data: Uint8Array;
   name: string;
+  containerId: string;
+  fileId: string;
 }
 
 const CODE_EXTENSIONS: Record<string, string> = {
@@ -43,7 +46,13 @@ const CODE_EXTENSIONS: Record<string, string> = {
   'markdown': 'markdown',
 };
 
-export const TextPreview: React.FC<TextPreviewProps> = ({ data, name }) => {
+export const TextPreview: React.FC<TextPreviewProps> = ({ data, name, containerId, fileId }) => {
+  const { releaseFileData } = useVaultStore();
+
+  useEffect(() => {
+    return () => { releaseFileData(containerId, fileId); };
+  }, [containerId, fileId]);
+
   const { text, language } = useMemo(() => {
     // Try a strict decode first so we can detect invalid UTF-8, but fall back
     // to a lossy decode (replacement chars) instead of throwing — there is no
