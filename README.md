@@ -1,6 +1,6 @@
-# Cryptainer - V2 coming soon
+# Cryptainer
 
-> **Offline Encrypted Container Manager** - Securely store and manage your files with military-grade encryption
+> **Offline Encrypted Container Manager** — Securely store and manage your files with military-grade encryption
 
 [![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
 [![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
@@ -16,32 +16,35 @@
 ### Core Functionality
 - **🔐 Military-Grade Encryption**: AES-256-GCM authenticated encryption with Argon2id key derivation
 - **📦 Encrypted Containers**: Store multiple files in a single encrypted container
-- **🔓 Password Protection**: Unlock containers with your password - no keys stored anywhere
+- **🔓 Password Protection**: Unlock containers with your password — no keys stored on disk
+- **⚡ Lazy Decryption**: Open a container instantly — files decrypt on-demand when you preview them
 - **✏️ Edit Mode**: Add or remove files from existing containers with automatic re-encryption
 - **💾 Portable Format**: Export/import containers using the `.ctnr` file format
-- **🗄️ Local Storage**: All data stored locally - no cloud, no servers, 100% offline
+- **🗄️ Local Storage**: All data stored locally — no cloud, no servers, 100% offline
 
 ### Security Features
-- **Memory-Safe Key Handling**: Keys are wiped from memory immediately after use (Zeroize)
+- **Memory-Safe Key Handling**: AES keys are wrapped in `Zeroizing<>` and wiped from memory immediately when containers are locked
+- **LRU Cache with Zeroization**: Decrypted file data is cached (50 MB) and zeroized on eviction or explicit release
 - **Session Management**: Unlocked containers held in memory only, cleared on lock/app close
-- **Integrity Protection**: SHA-256 checksums detect tampering or corruption
+- **Integrity Protection**: SHA-256 checksums + GCM authentication tags detect tampering or corruption
+- **V1 → V2 Auto-Migration**: Legacy containers are automatically migrated to the v2 per-file encryption format on unlock
 - **Configurable Security Levels**: Choose from Fast, Standard, High, or Paranoid Argon2id settings
-- **Auto-Lock**: Automatically lock containers after period of inactivity
+- **Auto-Lock**: Automatically lock containers after configurable period of inactivity (default 5 minutes)
 
 ### File Support
 - **Images**: PNG, JPG, GIF, WebP (with preview)
 - **Videos**: MP4, WebM (with playback)
 - **Audio**: MP3, WAV, OGG (with playback)
-- **Documents**: PDF (with viewer)
+- **Documents**: PDF (with embedded viewer)
 - **Code Files**: 20+ languages with syntax highlighting (Rust, TypeScript, Python, etc.)
 - **Text Files**: UTF-8 text with line numbers
 - **Binary Files**: Hex dump view with offset/hex/ASCII display
 
 ### User Experience
 - **🔍 Search & Filter**: Search containers by name or tags
-- **🏷️ Tag System**: Organize containers with custom tags
+- **🏷️ Tag System**: Organize containers with custom tags, filter by tag
 - **📊 Sort Options**: Sort by name, date, size, or file count
-- **⚙️ Settings**: Configure default security, auto-lock timeout, and theme
+- **⚙️ Settings**: Configure auto-lock timeout
 - **🔑 Password Hints**: Optional hints to help remember passwords
 - **💪 Password Strength**: Visual indicator for password strength
 - **🎨 Dark Theme**: Beautiful dark UI with accent colors
@@ -49,32 +52,34 @@
 ## Tech Stack
 
 ### Backend
-- **Rust** - Systems programming with memory safety
-- **Tauri v2** - Secure desktop/mobile app framework
-- **AES-256-GCM** - Authenticated encryption
-- **Argon2id** - Memory-hard password hashing
-- **SQLite** - Local metadata storage
-- **sqlx** - Type-safe SQL queries
+- **Rust** — Systems programming with memory safety (edition 2021)
+- **Tauri v2** — Secure desktop app framework
+- **AES-256-GCM** — Authenticated encryption (via `aes-gcm` v0.10)
+- **Argon2id** — Memory-hard password hashing (via `argon2` v0.5)
+- **SQLite** — Local metadata storage (via `sqlx` v0.7)
+- **LRU Cache** — Bounded in-memory cache with zeroization (via `lru` v0.12)
+- **Zeroize** — Automatic secure memory wiping (via `zeroize` v1.7)
 
 ### Frontend
-- **React 18** - UI framework
-- **TypeScript** - Type-safe JavaScript
-- **Vite** - Fast build tooling
-- **Zustand** - State management
-- **Prism.js** - Syntax highlighting
+- **React 18** — UI framework
+- **TypeScript** — Type-safe JavaScript
+- **Vite** — Fast build tooling
+- **Zustand** — Lightweight state management
+- **Prism.js** — Syntax highlighting (via `prism-react-renderer`)
+- **react-dropzone** — Drag-and-drop file selection
 
-## Installation
+## Quick Start
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (v18+)
 - [Rust](https://www.rust-lang.org/tools/install)
-- [Tauri CLI](https://tauri.app/v1/guides/getting-started/prerequisites)
+- [Tauri CLI](https://tauri.app/v2/guides/getting-started/prerequisites)
 
 ### Desktop (Linux/macOS/Windows)
 
 ```bash
 # Clone the repository
-git clone https://github.com/yourusername/cryptainer.git
+git clone https://github.com/mrvigneshvt/Cryptainer.git
 cd cryptainer
 
 # Install dependencies
@@ -87,138 +92,103 @@ npm run tauri dev
 npm run tauri build
 ```
 
-### Linux Dependencies
-```bash
-# Arch Linux / Omarchy
-sudo pacman -S --needed base-devel curl wget file openssl gtk3 libayatana-appindicator librsvg webkit2gtk-4.1
-
-# Ubuntu/Debian
-sudo apt-get install -y libwebkit2gtk-4.1-dev libjavascriptcoregtk-4.1-dev build-essential libssl-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
-```
+See [`docs/SETUP.md`](docs/SETUP.md) for detailed setup instructions and platform-specific dependencies.
 
 ## Usage
 
 ### Creating a Container
-1. Click "+ New Container"
-2. Select files to encrypt
+1. Click **"+ New Container"**
+2. Select files to encrypt (drag-and-drop or file picker)
 3. Choose security level (Standard recommended)
-4. Set a strong password
+4. Set a strong password (min 8 characters)
 5. Optional: Add password hint and tags
-6. Click "Create & Encrypt"
+6. Click **"Create & Encrypt"**
 
 ### Opening a Container
-1. Click on a container card
+1. Click on a container card in the vault grid
 2. Enter your password
-3. View files in the container
-4. Click any file to preview
+3. Browse files — click any file to preview it
+4. Files decrypt on-demand; previews stream for videos/audio
 
 ### Editing a Container
 1. Open an unlocked container
-2. Click "Edit" button
+2. Click **"Edit"**
 3. Remove files or add new ones
-4. Enter password to save changes
-5. Container is automatically re-encrypted
+4. Enter password to verify and save changes
+5. Container is automatically re-encrypted with fresh nonces
 
 ### Export/Import
-- **Export**: Hover over container → click download icon → save `.ctnr` file
-- **Import**: Click "Import .ctnr" → select file(s) → imported containers appear in vault
+- **Export**: Click the ↓ button on a container card → save `.ctnr` file
+- **Import**: Click **"Import .ctnr"** → select one or more files → containers appear in vault
+
+## Architecture
+
+```
+┌─────────────────────┐
+│   React App         │  UI components, Zustand store, previews, auto-lock
+│   (TypeScript)      │
+├─────────────────────┤
+│   Tauri IPC Layer   │  10 type-safe invoke() commands
+├─────────────────────┤
+│   Rust Backend      │  AES-256-GCM, Argon2id, SQLite, LRU cache
+│   (src-tauri/src/)  │
+│                     │
+│  ┌───────────────┐  │
+│  │   crypto.rs   │  │  Encrypt/decrypt, key derivation
+│  └───────────────┘  │
+│  ┌───────────────┐  │
+│  │  storage.rs   │  │  SQLite CRUD (sqlx)
+│  └───────────────┘  │
+│  ┌───────────────┐  │
+│  │  session.rs   │  │  Session store + LRU cache with zeroization
+│  └───────────────┘  │
+│  ┌───────────────┐  │
+│  │  export.rs    │  │  .ctnr file format
+│  └───────────────┘  │
+│  ┌───────────────┐  │
+│  │  commands.rs  │  │  10 IPC command handlers
+│  └───────────────┘  │
+└─────────────────────┘
+         │
+         ▼
+┌─────────────────────┐
+│  File System + DB   │  .enc blobs on disk + SQLite metadata DB
+└─────────────────────┘
+```
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the complete module graph, component tree, and data flow.
+
+## Container Format
+
+Cryptainer uses two container formats:
+
+| Format | Description | Status |
+|---|---|---|
+| **v1 (legacy)** | Single-blob encryption — entire payload encrypted as one AES-256-GCM output | Migrated to v2 on unlock |
+| **v2 (current)** | Per-file encryption — metadata encrypted separately, each file encrypted individually, lazy decryption, LRU cache | Active |
+
+See [`docs/CRYPTO.md`](docs/CRYPTO.md) for the full cryptographic specification and blob layout.
 
 ## Security Model
 
 ### What IS Protected
-- ✅ File contents (encrypted with AES-256-GCM)
-- ✅ File names and metadata (inside encrypted payload)
+- ✅ File contents (AES-256-GCM authenticated encryption)
+- ✅ File names and metadata (inside encrypted metadata section)
 - ✅ Container structure and organization
+- ✅ Integrity (SHA-256 checksums + GCM authentication tags)
 
 ### What is NOT Protected (Visible in Plaintext)
 - Container name (shown in UI for identification)
 - Creation/modification dates
 - File count and total size
-- Password hint (intentionally visible)
+- Password hint (intentionally visible for user convenience)
 - Algorithm and KDF parameters
 
 ### Threat Model
-- **Protects against**: Unauthorized access, offline attacks, database theft
-- **Does NOT protect against**: Compelled disclosure (password required), memory attacks (keys in RAM when unlocked)
-
-## Architecture
-
-```
-┌─────────────────┐     ┌──────────────────┐
-│   React App     │────▶│   Tauri Bridge   │
-│   (Frontend)    │◀────│   (IPC Commands) │
-└─────────────────┘     └──────────────────┘
-                               │
-                               ▼
-                        ┌──────────────────┐
-                        │   Rust Backend   │
-                        │                  │
-                        │  ┌────────────┐  │
-                        │  │   Crypto   │  │
-                        │  │  (Encrypt) │  │
-                        │  └────────────┘  │
-                        │  ┌────────────┐  │
-                        │  │   Vault    │  │
-                        │  │  (Structs) │  │
-                        │  └────────────┘  │
-                        │  ┌────────────┐  │
-                        │  │  Storage   │  │
-                        │  │  (SQLite)  │  │
-                        │  └────────────┘  │
-                        │  ┌────────────┐  │
-                        │  │  Session   │  │
-                        │  │  (Memory)  │  │
-                        │  └────────────┘  │
-                        └──────────────────┘
-                               │
-                               ▼
-                        ┌──────────────────┐
-                        │   File System    │
-                        │  (.ctnr / .enc)  │
-                        └──────────────────┘
-```
+- **Protects against**: Unauthorized access, offline attacks, database theft, blob tampering
+- **Does NOT protect against**: Compelled disclosure (password required), memory attacks on unlocked containers, keyloggers/malware on the host system
 
 ## Development
-
-### Project Structure
-```
-cryptainer/
-├── docs/                      # Documentation
-│   ├── PROGRESS.md           # Build progress log
-│   ├── ARCHITECTURE.md       # System design
-│   ├── CRYPTO.md             # Cryptographic specs
-│   ├── API.md                # IPC command docs
-│   └── kimi-docs/            # Backup copies
-├── src/                       # React frontend
-│   ├── components/
-│   │   ├── Container/        # Container UI components
-│   │   ├── Preview/          # File preview components
-│   │   ├── Settings/         # Settings UI
-│   │   └── UI/               # Shared UI components
-│   ├── hooks/                # Custom React hooks
-│   ├── store/                # Zustand state management
-│   ├── types/                # TypeScript types
-│   └── styles/               # Global CSS
-├── src-tauri/                 # Rust backend
-│   ├── src/
-│   │   ├── main.rs           # Entry point
-│   │   ├── lib.rs            # Library setup
-│   │   ├── error.rs          # Error types
-│   │   ├── crypto.rs         # Encryption/decryption
-│   │   ├── vault.rs          # Data structures
-│   │   ├── storage.rs        # SQLite operations
-│   │   ├── session.rs        # In-memory sessions
-│   │   ├── export.rs         # .ctnr format
-│   │   └── commands.rs       # Tauri IPC handlers
-│   ├── migrations/           # Database migrations
-│   └── Cargo.toml            # Rust dependencies
-├── tests/                     # Integration tests
-├── package.json              # Node.js dependencies
-├── tsconfig.json             # TypeScript config
-└── vite.config.ts            # Vite configuration
-```
-
-### Running Tests
 
 ```bash
 # Rust unit tests
@@ -227,92 +197,40 @@ cargo test
 # TypeScript type checking
 npx tsc --noEmit
 
-# Run linter (if configured)
+# Rust linting
 cargo clippy -- -D warnings
 ```
 
-### Adding a New Feature
+See [`docs/SETUP.md`](docs/SETUP.md) for full development workflow and [`docs/CHANGELOG.md`](docs/CHANGELOG.md) for release history.
 
-1. **Backend (Rust)**:
-   - Add command to `src-tauri/src/commands.rs`
-   - Register in `src-tauri/src/lib.rs`
-   - Add tests if applicable
+## Project Structure
 
-2. **Frontend (React)**:
-   - Add IPC call to `src/store/vaultStore.ts`
-   - Create/update components in `src/components/`
-   - Update types in `src/types/vault.ts` if needed
+```
+cryptainer/
+├── docs/                      # Documentation
+├── src/                       # React frontend
+├── src-tauri/                 # Rust backend
+│   ├── src/                   # Rust source modules
+│   ├── tests/                 # Integration tests
+│   └── migrations/            # SQLite migrations
+├── package.json              # npm dependencies
+└── vite.config.ts            # Vite configuration
+```
 
-3. **Documentation**:
-   - Update `docs/PROGRESS.md`
-   - Update `docs/ARCHITECTURE.md` if architecture changes
-   - Update `docs/API.md` if new commands added
+## Documentation
 
-## Cryptographic Details
-
-### Encryption
-- **Algorithm**: AES-256-GCM (authenticated encryption)
-- **Key Size**: 256 bits
-- **Nonce**: 96 bits (random per encryption)
-- **Tag**: 128 bits GCM authentication tag
-
-### Key Derivation
-- **Algorithm**: Argon2id (winner of Password Hashing Competition)
-- **Memory**: 64MB (Standard preset)
-- **Iterations**: 2 (Standard preset)
-- **Parallelism**: 1 (Standard preset)
-
-### Security Levels
-
-| Preset | Memory | Iterations | Use Case |
-|--------|--------|------------|----------|
-| Fast | 16MB | 1 | Low-end devices |
-| Standard | 64MB | 2 | **Recommended** |
-| High | 128MB | 3 | Extra security |
-| Paranoid | 256MB | 4 | Maximum security |
-
-## Roadmap
-
-### Phase 1: Core Desktop ✅
-- [x] Project scaffolding
-- [x] Crypto implementation (AES-256-GCM + Argon2id)
-- [x] SQLite storage
-- [x] Basic UI components
-- [x] Container CRUD operations
-
-### Phase 2: Export/Import ✅
-- [x] .ctnr file format
-- [x] Export UI
-- [x] Import UI
-- [x] Edit mode (add/remove files)
-
-### Phase 3: Polish ✅
-- [x] Extended previews (images, video, code, etc.)
-- [x] Search, filter, and tags
-- [x] Session auto-lock
-- [x] Settings screen
-
-### Phase 4: Mobile (Planned)
-- [ ] Android support
-- [ ] iOS support
-- [ ] Responsive layouts
-- [ ] Touch gestures
-- [ ] Mobile file pickers
-- [ ] Optional: Biometric unlock
-
-## Contributing
-
-Contributions are welcome! Please read our [Contributing Guide](CONTRIBUTING.md) for details.
-
-### Code Quality
-- All Rust code must pass `cargo clippy -- -D warnings`
-- All TypeScript must pass `tsc --noEmit`
-- New features require tests
-- Security-sensitive code requires documentation
+| Document | Description |
+|---|---|
+| [`docs/IDEA.md`](docs/IDEA.md) | Project vision, design philosophy, threat model |
+| [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) | Module graph, component tree, data flow, dependencies |
+| [`docs/API.md`](docs/API.md) | Complete IPC command reference |
+| [`docs/CRYPTO.md`](docs/CRYPTO.md) | Cryptographic specifications, blob format, key handling |
+| [`docs/SETUP.md`](docs/SETUP.md) | Development setup guide |
+| [`docs/CHANGELOG.md`](docs/CHANGELOG.md) | Release history |
 
 ## License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+MIT License — see [LICENSE](LICENSE) for details.
 
 ## Acknowledgments
 
@@ -321,15 +239,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [AES-GCM](https://github.com/RustCrypto/AEADs) for authenticated encryption
 - [Prism.js](https://prismjs.com/) for syntax highlighting
 
-## Support
-
-If you encounter any issues or have questions:
-- 📧 Open an issue on GitHub
-- 📖 Check the documentation in `/docs/`
-- 💬 Start a discussion
-
 ---
 
 **⚠️ Security Notice**: This is cryptographic software. While we follow best practices, you are responsible for your data. Always keep backups of important files and use strong, unique passwords.
 
-**Made with ❤️ using Rust + React + Tauri**
+*Made with Rust + React + Tauri*
