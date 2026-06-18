@@ -33,8 +33,12 @@ pub struct ContainerHeader {
     pub total_size: u64,
     pub created_at: String,
     pub modified_at: String,
-    pub blob_sha256: String, // SHA-256 of the blob for integrity check
+    pub blob_sha256: String,
+    #[serde(default = "default_format_version")]
+    pub format_version: u8,
 }
+
+fn default_format_version() -> u8 { 1 }
 
 /// Serialize a container into .ctnr binary format.
 pub fn serialize(meta: &ContainerMeta, blob: &[u8]) -> Result<Vec<u8>> {
@@ -51,6 +55,7 @@ pub fn serialize(meta: &ContainerMeta, blob: &[u8]) -> Result<Vec<u8>> {
         created_at: meta.created_at.clone(),
         modified_at: meta.modified_at.clone(),
         blob_sha256: meta.blob_sha256.clone(),
+        format_version: meta.format_version,
     };
 
     let header_json = serde_json::to_vec(&header)?;

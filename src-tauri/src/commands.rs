@@ -740,7 +740,7 @@ pub async fn import_container(
         blob_sha256: header.blob_sha256,
         created_at:  header.created_at,
         modified_at: header.modified_at,
-        format_version: 1,
+        format_version: header.format_version,
     };
 
     // Insert DB — clean up blob on failure to avoid orphaned files
