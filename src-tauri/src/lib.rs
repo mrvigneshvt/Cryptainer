@@ -41,6 +41,7 @@ pub fn run() {
             
             app.manage(pool);
             app.manage(session::SessionStore::new());
+            app.manage(session::SessionStoreV2::new());
             
             Ok(())
         })
