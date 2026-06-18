@@ -86,6 +86,7 @@ pub struct SessionV2 {
     pub key: Zeroizing<[u8; 32]>,
     pub salt: [u8; SALT_LEN],
     pub metadata: ContainerMetadataV2,
+    pub blob_path: String,
     pub cache: Mutex<LruCache<String, CachedFile>>,
     pub max_cache_bytes: usize,
     pub current_cache_bytes: AtomicUsize,
@@ -96,6 +97,7 @@ impl SessionV2 {
         key: Zeroizing<[u8; 32]>,
         salt: [u8; SALT_LEN],
         metadata: ContainerMetadataV2,
+        blob_path: String,
         max_cache_bytes: usize,
     ) -> Self {
         let cap = NonZeroUsize::new(1024).unwrap();
@@ -103,6 +105,7 @@ impl SessionV2 {
             key,
             salt,
             metadata,
+            blob_path,
             cache: Mutex::new(LruCache::new(cap)),
             max_cache_bytes,
             current_cache_bytes: AtomicUsize::new(0),
@@ -175,6 +178,13 @@ impl SessionStoreV2 {
         self.0.lock().unwrap().get(container_id).cloned()
     }
 
+    pub fn get_mut<F, R>(&self, container_id: &str, f: F) -> Option<R>
+    where
+        F: FnOnce(&mut SessionV2) -> R,
+    {
+        self.0.lock().unwrap().get_mut(container_id).map(f)
+    }
+
     pub fn lock(&self, container_id: &str) {
         let mut sessions = self.0.lock().unwrap();
         if let Some(session) = sessions.remove(container_id) {
@@ -200,6 +210,7 @@ impl Clone for SessionV2 {
             key: Zeroizing::new(key),
             salt: self.salt,
             metadata: self.metadata.clone(),
+            blob_path: self.blob_path.clone(),
             cache: Mutex::new(LruCache::new(cap)),
             max_cache_bytes: self.max_cache_bytes,
             current_cache_bytes: AtomicUsize::new(0),
@@ -242,7 +253,7 @@ mod tests {
 
     fn dummy_session() -> SessionV2 {
         let key = Zeroizing::new([42u8; 32]);
-        SessionV2::new(key, [0u8; SALT_LEN], dummy_metadata(), DEFAULT_MAX_CACHE_BYTES)
+        SessionV2::new(key, [0u8; SALT_LEN], dummy_metadata(), "/tmp/test.enc".into(), DEFAULT_MAX_CACHE_BYTES)
     }
 
     #[test]
@@ -278,7 +289,8 @@ mod tests {
             Zeroizing::new([42u8; 32]),
             [0u8; SALT_LEN],
             dummy_metadata(),
-            1000, // Only 1000 bytes
+            "/tmp/test.enc".into(),
+            1000,
         );
         // Insert 800 bytes
         session.cache_put("file-1".into(), vec![0u8; 800]);

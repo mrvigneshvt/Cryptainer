@@ -49,6 +49,7 @@ pub fn run() {
             commands::create_container,
             commands::unlock_container,
             commands::get_file_data,
+            commands::release_file_data,
             commands::save_edits,
             commands::list_containers,
             commands::delete_container,
