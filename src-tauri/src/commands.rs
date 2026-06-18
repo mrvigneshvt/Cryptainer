@@ -17,7 +17,7 @@ use crate::{
     crypto::{self, KdfParams},
     storage,
     vault::{ContainerMeta, ContainerPayload, VaultFile, ContainerMetadataV2, FileMetadata},
-    session::{Session, SessionStore, SessionStoreV2},
+    session::{Session, SessionStore, SessionStoreV2, SessionV2},
     export,
     error::CryptoError,
     crypto::SALT_LEN,
@@ -189,14 +189,16 @@ pub async fn create_container(
     Ok(meta)
 }
 
-/// Unlock (decrypt) a container. Stores the session in memory.
-/// Returns the list of files (without data bytes — data fetched separately).
+/// Unlock (decrypt) a container. Handles both v1 (legacy) and v2 (per-file).
+/// V2: decrypts metadata only, stores SessionV2 with empty LRU cache.
+/// V1: decrypts entire payload, stores Session.
 #[tauri::command]
 pub async fn unlock_container(
     container_id: String,
     password: String,
     pool: State<'_, sqlx::SqlitePool>,
     sessions: State<'_, SessionStore>,
+    sessions_v2: State<'_, SessionStoreV2>,
 ) -> std::result::Result<Vec<serde_json::Value>, CryptoError> {
     validate_password(&password)?;
     let password = zeroize::Zeroizing::new(password);
@@ -204,49 +206,197 @@ pub async fn unlock_container(
     let meta = storage::get_container(&pool, &container_id).await?;
     let blob = std::fs::read(&meta.blob_path)?;
 
-    // Integrity check before attempting decryption
     let actual_sha256 = crypto::sha256_hex(&blob);
     if actual_sha256 != meta.blob_sha256 {
         return Err(CryptoError::IntegrityFailure);
     }
 
-    let plaintext = crypto::decrypt(&blob, &password, &meta.kdf_params)?;
+    if meta.format_version == 2 {
+        unlock_v2(&container_id, &password, &meta, &blob, sessions_v2)
+    } else {
+        unlock_v1(&container_id, &password, &meta, &blob, sessions)
+    }
+}
+
+fn unlock_v1(
+    container_id: &str,
+    password: &str,
+    meta: &ContainerMeta,
+    blob: &[u8],
+    sessions: State<'_, SessionStore>,
+) -> std::result::Result<Vec<serde_json::Value>, CryptoError> {
+    let plaintext = crypto::decrypt(blob, password, &meta.kdf_params)?;
     let payload: ContainerPayload = serde_json::from_slice(&plaintext)?;
 
-    // Build file list WITHOUT data bytes (data fetched per-file on demand)
     let file_list: Vec<serde_json::Value> = payload.files.iter().map(|f| {
         serde_json::json!({ "id": f.id, "name": f.name, "mime": f.mime, "size": f.size })
     }).collect();
 
-    // Derive key and extract salt to store in session
     let (key, salt_bytes) = {
         let salt = &blob[..crypto::SALT_LEN];
-        let key = crypto::derive_key(&password, salt, &meta.kdf_params)?;
+        let key = crypto::derive_key(password, salt, &meta.kdf_params)?;
         let key = zeroize::Zeroizing::new(key.as_ref().to_vec());
         let salt_bytes: [u8; SALT_LEN] = salt.try_into().unwrap();
         (key, salt_bytes)
     };
 
-    sessions.set(container_id, Session { payload, key, salt: salt_bytes });
-    drop(password);
+    sessions.set(container_id.to_string(), Session { payload, key, salt: salt_bytes });
+    Ok(file_list)
+}
+
+fn unlock_v2(
+    container_id: &str,
+    password: &str,
+    meta: &ContainerMeta,
+    blob: &[u8],
+    sessions_v2: State<'_, SessionStoreV2>,
+) -> std::result::Result<Vec<serde_json::Value>, CryptoError> {
+    if blob.len() < SALT_LEN + 4 + crypto::NONCE_LEN + 16 {
+        return Err(CryptoError::InvalidFormat("v2 blob too short".into()));
+    }
+
+    let salt: [u8; SALT_LEN] = blob[..SALT_LEN].try_into().unwrap();
+    let key = crypto::derive_key(password, &salt, &meta.kdf_params)?;
+
+    // Read metadata section: [salt][metadata_len: u32][metadata_nonce][metadata_ciphertext]
+    let meta_len_offset = SALT_LEN;
+    let meta_len = u32::from_le_bytes(
+        blob[meta_len_offset..meta_len_offset + 4].try_into().unwrap()
+    ) as usize;
+
+    let meta_nonce_offset = meta_len_offset + 4;
+    let meta_nonce: [u8; crypto::NONCE_LEN] = blob[meta_nonce_offset..meta_nonce_offset + crypto::NONCE_LEN]
+        .try_into().unwrap();
+
+    let meta_ct_offset = meta_nonce_offset + crypto::NONCE_LEN;
+    let meta_ct_end = meta_ct_offset + meta_len;
+    if meta_ct_end > blob.len() {
+        return Err(CryptoError::InvalidFormat("v2 metadata section exceeds blob".into()));
+    }
+    let metadata_ciphertext = &blob[meta_ct_offset..meta_ct_end];
+
+    let metadata_plaintext = crypto::decrypt_section(metadata_ciphertext, &*key, &meta_nonce)?;
+    let metadata: ContainerMetadataV2 = serde_json::from_slice(&metadata_plaintext)?;
+
+    let file_list: Vec<serde_json::Value> = metadata.files.iter().map(|f| {
+        serde_json::json!({ "id": f.id, "name": f.name, "mime": f.mime, "size": f.size })
+    }).collect();
+
+    let mut key_arr = [0u8; 32];
+    key_arr.copy_from_slice(key.as_ref());
+    let session = SessionV2::new(
+        zeroize::Zeroizing::new(key_arr),
+        salt,
+        metadata,
+        meta.blob_path.clone(),
+        crate::session::DEFAULT_MAX_CACHE_BYTES,
+    );
+    sessions_v2.set(container_id.to_string(), session);
+
     Ok(file_list)
 }
 
 /// Fetch the data bytes of a specific file in an unlocked container.
-/// Data is never stored in the frontend state — fetched on demand for preview.
+/// V2: checks cache first, then seeks + decrypts from blob on miss.
+/// V1: reads from in-memory session payload.
 #[tauri::command]
 pub async fn get_file_data(
     container_id: String,
     file_id: String,
     sessions: State<'_, SessionStore>,
+    sessions_v2: State<'_, SessionStoreV2>,
+) -> std::result::Result<Vec<u8>, CryptoError> {
+    // Try v2 first
+    if let Some(data) = get_file_data_v2(&container_id, &file_id, &sessions_v2)? {
+        return Ok(data);
+    }
+    // Fallback to v1
+    get_file_data_v1(&container_id, &file_id, &sessions)
+}
+
+fn get_file_data_v1(
+    container_id: &str,
+    file_id: &str,
+    sessions: &SessionStore,
 ) -> std::result::Result<Vec<u8>, CryptoError> {
     let store = sessions.0.lock().unwrap();
-    let session = store.get(&container_id)
+    let session = store.get(container_id)
         .ok_or(CryptoError::SessionInactive)?;
     let file = session.payload.files.iter()
         .find(|f| f.id == file_id)
-        .ok_or_else(|| CryptoError::NotFound(file_id.clone()))?;
+        .ok_or_else(|| CryptoError::NotFound(file_id.to_string()))?;
     Ok(file.data.clone())
+}
+
+fn get_file_data_v2(
+    container_id: &str,
+    file_id: &str,
+    sessions_v2: &SessionStoreV2,
+) -> std::result::Result<Option<Vec<u8>>, CryptoError> {
+    // Check v2 session and cache first
+    let (_cache_hit, blob_path, key_arr, file_meta_opt) = {
+        let store = sessions_v2.0.lock().unwrap();
+        let session = match store.get(container_id) {
+            Some(s) => s,
+            None => return Ok(None), // No v2 session, fall through to v1
+        };
+
+        // Check cache
+        if let Some(cached) = session.cache_get(file_id) {
+            return Ok(Some(cached));
+        }
+
+        // Get file metadata
+        let fm = match session.metadata.files.iter().find(|f| f.id == file_id) {
+            Some(fm) => fm.clone(),
+            None => return Err(CryptoError::NotFound(file_id.to_string())),
+        };
+
+        let mut key = [0u8; 32];
+        key.copy_from_slice(session.key.as_ref());
+        (false, session.blob_path.clone(), key, Some(fm))
+    };
+
+    let fm = file_meta_opt.ok_or_else(|| CryptoError::NotFound(file_id.to_string()))?;
+
+    // Seek + read from blob
+    let mut file = std::fs::File::open(&blob_path)?;
+    let offset = fm.offset;
+    let enc_len = fm.size as usize + 16; // +GCM tag
+    let mut encrypted = vec![0u8; enc_len];
+    use std::io::{Read, Seek, SeekFrom};
+    file.seek(SeekFrom::Start(offset))?;
+    file.read_exact(&mut encrypted)?;
+
+    let plaintext = crypto::decrypt_section(&encrypted, &key_arr, &fm.data_nonce)?;
+
+    // Verify SHA-256
+    let hash = crypto::sha256_hex(&plaintext);
+    if hash != fm.sha256 {
+        return Err(CryptoError::IntegrityFailure);
+    }
+
+    // Insert into cache
+    {
+        sessions_v2.get_mut(container_id, |session| {
+            session.cache_put(file_id.to_string(), plaintext.clone());
+        });
+    }
+
+    Ok(Some(plaintext))
+}
+
+/// Explicitly release a file from the v2 session cache, zeroizing its data.
+#[tauri::command]
+pub async fn release_file_data(
+    container_id: String,
+    file_id: String,
+    sessions_v2: State<'_, SessionStoreV2>,
+) -> std::result::Result<(), CryptoError> {
+    sessions_v2.get_mut(&container_id, |session| {
+        session.release_file_data(&file_id);
+    });
+    Ok(())
 }
 
 /// Save edits to an unlocked container (add/remove files) and re-encrypt.
@@ -492,17 +642,17 @@ pub async fn delete_container(
     container_id: String,
     pool: State<'_, sqlx::SqlitePool>,
     sessions: State<'_, SessionStore>,
+    sessions_v2: State<'_, SessionStoreV2>,
 ) -> std::result::Result<(), CryptoError> {
     let meta = storage::get_container(&pool, &container_id).await?;
-    // Remove the DB row first — the entry is now gone from the user's vault.
     storage::delete_container(&pool, &container_id).await?;
-    // Then remove the blob; a missing file is fine (it's already gone).
     match std::fs::remove_file(&meta.blob_path) {
         Ok(()) => {}
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
         Err(e) => return Err(e.into()),
     }
     sessions.lock(&container_id);
+    sessions_v2.lock(&container_id);
     Ok(())
 }
 
@@ -511,8 +661,10 @@ pub async fn delete_container(
 pub async fn lock_container(
     container_id: String,
     sessions: State<'_, SessionStore>,
+    sessions_v2: State<'_, SessionStoreV2>,
 ) -> std::result::Result<(), CryptoError> {
     sessions.lock(&container_id);
+    sessions_v2.lock(&container_id);
     Ok(())
 }
 
