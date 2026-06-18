@@ -49,3 +49,6 @@ Thumbs.db
 
 # Subagent chain run artifacts
 .pi/chain/
+
+# AI editor workspace files
+.opencode/
