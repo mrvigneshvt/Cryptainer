@@ -102,6 +102,15 @@ pub async fn update_container_blob(
     Ok(())
 }
 
+/// Update the format_version for a container after v1→v2 migration.
+pub async fn update_container_format_version(pool: &SqlitePool, id: &str, version: u8) -> Result<()> {
+    sqlx::query("UPDATE containers SET format_version=? WHERE id=?")
+        .bind(version as i64)
+        .bind(id)
+        .execute(pool).await?;
+    Ok(())
+}
+
 /// Delete a container row by ID. Blob file deletion is handled by vault.rs.
 pub async fn delete_container(pool: &SqlitePool, id: &str) -> Result<()> {
     let result = sqlx::query("DELETE FROM containers WHERE id=?")
