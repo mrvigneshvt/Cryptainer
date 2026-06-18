@@ -136,6 +136,7 @@ pub async fn create_container(
         blob_sha256,
         created_at: now.clone(),
         modified_at: now,
+        format_version: 1,
     };
 
     // Insert DB — clean up blob on failure to avoid orphaned files
@@ -401,6 +402,7 @@ pub async fn import_container(
         blob_sha256: header.blob_sha256,
         created_at:  header.created_at,
         modified_at: header.modified_at,
+        format_version: 1,
     };
 
     // Insert DB — clean up blob on failure to avoid orphaned files
