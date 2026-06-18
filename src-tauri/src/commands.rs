@@ -190,8 +190,7 @@ pub async fn create_container(
 }
 
 /// Unlock (decrypt) a container. Handles both v1 (legacy) and v2 (per-file).
-/// V2: decrypts metadata only, stores SessionV2 with empty LRU cache.
-/// V1: decrypts entire payload, stores Session.
+/// V1 containers are automatically migrated to v2 on unlock.
 #[tauri::command]
 pub async fn unlock_container(
     container_id: String,
@@ -212,36 +211,126 @@ pub async fn unlock_container(
     }
 
     if meta.format_version == 2 {
-        unlock_v2(&container_id, &password, &meta, &blob, sessions_v2)
-    } else {
-        unlock_v1(&container_id, &password, &meta, &blob, sessions)
+        return unlock_v2(&container_id, &password, &meta, &blob, sessions_v2);
     }
+
+    // v1 detected — auto-migrate to v2
+    let plaintext = crypto::decrypt(&blob, &password, &meta.kdf_params)?;
+    let payload: ContainerPayload = serde_json::from_slice(&plaintext)?;
+
+    let (new_blob, file_list) = convert_v1_to_v2(&payload, &password, &meta.kdf_params)?;
+
+    // Atomic write — never delete old blob on failure
+    atomic_write_blob(&meta.blob_path, &new_blob)?;
+
+    // Update DB format_version (blob_sha256 will be updated after unlock_v2 reads it)
+    storage::update_container_format_version(&pool, &container_id, 2).await?;
+
+    // Continue with v2 unlock from the new blob
+    let blob_sha256 = crypto::sha256_hex(&new_blob);
+    storage::update_container_blob(&pool, &container_id, payload.files.len() as u32,
+        payload.files.iter().map(|f| f.size).sum(), &blob_sha256).await?;
+
+    let session = build_v2_session(&password, &meta, &new_blob)?;
+    sessions_v2.set(container_id, session);
+
+    Ok(file_list)
 }
 
-fn unlock_v1(
-    container_id: &str,
+fn build_v2_session(
     password: &str,
     meta: &ContainerMeta,
     blob: &[u8],
-    sessions: State<'_, SessionStore>,
-) -> std::result::Result<Vec<serde_json::Value>, CryptoError> {
-    let plaintext = crypto::decrypt(blob, password, &meta.kdf_params)?;
-    let payload: ContainerPayload = serde_json::from_slice(&plaintext)?;
+) -> std::result::Result<SessionV2, CryptoError> {
+    let salt: [u8; SALT_LEN] = blob[..SALT_LEN].try_into().unwrap();
+    let key = crypto::derive_key(password, &salt, &meta.kdf_params)?;
+
+    let meta_len_offset = SALT_LEN;
+    let meta_len = u32::from_le_bytes(
+        blob[meta_len_offset..meta_len_offset + 4].try_into().unwrap()
+    ) as usize;
+
+    let meta_nonce_offset = meta_len_offset + 4;
+    let meta_nonce: [u8; crypto::NONCE_LEN] = blob[meta_nonce_offset..meta_nonce_offset + crypto::NONCE_LEN]
+        .try_into().unwrap();
+
+    let meta_ct_offset = meta_nonce_offset + crypto::NONCE_LEN;
+    let meta_ct_end = meta_ct_offset + meta_len;
+    let metadata_ciphertext = &blob[meta_ct_offset..meta_ct_end];
+
+    let metadata_plaintext = crypto::decrypt_section(metadata_ciphertext, &*key, &meta_nonce)?;
+    let metadata: ContainerMetadataV2 = serde_json::from_slice(&metadata_plaintext)?;
+
+    let mut key_arr = [0u8; 32];
+    key_arr.copy_from_slice(key.as_ref());
+    Ok(SessionV2::new(
+        zeroize::Zeroizing::new(key_arr),
+        salt,
+        metadata,
+        meta.blob_path.clone(),
+        crate::session::DEFAULT_MAX_CACHE_BYTES,
+    ))
+}
+
+/// Convert a v1 container payload into a v2-format blob.
+fn convert_v1_to_v2(
+    payload: &ContainerPayload,
+    password: &str,
+    kdf_params: &KdfParams,
+) -> std::result::Result<(Vec<u8>, Vec<serde_json::Value>), CryptoError> {
+    let mut salt = [0u8; SALT_LEN];
+    rand::rngs::OsRng.fill_bytes(&mut salt);
+    let key = crypto::derive_key(password, &salt, kdf_params)?;
+
+    let mut files_meta: Vec<FileMetadata> = Vec::with_capacity(payload.files.len());
+    let mut encrypted_files: Vec<Vec<u8>> = Vec::with_capacity(payload.files.len());
 
     let file_list: Vec<serde_json::Value> = payload.files.iter().map(|f| {
         serde_json::json!({ "id": f.id, "name": f.name, "mime": f.mime, "size": f.size })
     }).collect();
 
-    let (key, salt_bytes) = {
-        let salt = &blob[..crypto::SALT_LEN];
-        let key = crypto::derive_key(password, salt, &meta.kdf_params)?;
-        let key = zeroize::Zeroizing::new(key.as_ref().to_vec());
-        let salt_bytes: [u8; SALT_LEN] = salt.try_into().unwrap();
-        (key, salt_bytes)
-    };
+    for f in &payload.files {
+        let sha256 = crypto::sha256_hex(&f.data);
+        let (encrypted, nonce) = crypto::encrypt_section(&f.data, &*key)?;
+        files_meta.push(FileMetadata {
+            id: f.id.clone(),
+            name: f.name.clone(),
+            mime: f.mime.clone(),
+            size: f.size,
+            offset: 0,
+            data_nonce: nonce,
+            sha256,
+            chunks: None,
+        });
+        encrypted_files.push(encrypted);
+    }
 
-    sessions.set(container_id.to_string(), Session { payload, key, salt: salt_bytes });
-    Ok(file_list)
+    let mut metadata_v2 = ContainerMetadataV2 { version: 2, files: files_meta };
+    let metadata_json = serde_json::to_vec(&metadata_v2)?;
+    let (enc_meta, _meta_nonce) = crypto::encrypt_section(&metadata_json, &*key)?;
+
+    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta.len();
+    let mut offset = SALT_LEN + meta_section_len;
+    for (i, fm) in metadata_v2.files.iter_mut().enumerate() {
+        fm.offset = offset as u64;
+        offset += encrypted_files[i].len();
+    }
+
+    let metadata_json = serde_json::to_vec(&metadata_v2)?;
+    let (enc_meta, meta_nonce) = crypto::encrypt_section(&metadata_json, &*key)?;
+
+    let file_data_len: usize = encrypted_files.iter().map(|e| e.len()).sum();
+    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta.len();
+    let mut blob = Vec::with_capacity(SALT_LEN + meta_section_len + file_data_len);
+    blob.extend_from_slice(&salt);
+    blob.extend_from_slice(&(enc_meta.len() as u32).to_le_bytes());
+    blob.extend_from_slice(&meta_nonce);
+    blob.extend_from_slice(&enc_meta);
+    for ef in &encrypted_files {
+        blob.extend_from_slice(ef);
+    }
+
+    Ok((blob, file_list))
 }
 
 fn unlock_v2(
