@@ -26,6 +26,7 @@ tokio = { version = "1", features = ["rt", "macros", "sync"] }
 
 # Utilities
 uuid = { version = "1", features = ["v4"] }
+lru = "0.12"
 chrono = { version = "0.4", features = ["serde"] }
 thiserror = "1"
 anyhow = "1"
