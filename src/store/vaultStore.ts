@@ -13,6 +13,7 @@ interface VaultState {
   unlockContainer:   (id: string, password: string) => Promise<VaultFileMeta[]>;
   lockContainer:     (id: string) => Promise<void>;
   getFileData:       (containerId: string, fileId: string) => Promise<Uint8Array>;
+  releaseFileData:   (containerId: string, fileId: string) => Promise<void>;
   exportContainer:   (id: string, destPath: string) => Promise<void>;
   importContainer:   (srcPath: string) => Promise<ContainerMeta>;
   saveContainerEdits: (containerId: string, password: string, filesToAdd: FileInput[], fileIdsToRemove: string[]) => Promise<ContainerMeta>;
@@ -72,6 +73,10 @@ export const useVaultStore = create<VaultState>((set) => ({
   getFileData: async (containerId, fileId) => {
     const bytes = await invoke<number[]>('get_file_data', { containerId, fileId });
     return new Uint8Array(bytes);
+  },
+
+  releaseFileData: async (containerId, fileId) => {
+    await invoke('release_file_data', { containerId, fileId });
   },
 
   exportContainer: async (id, destPath) => {
