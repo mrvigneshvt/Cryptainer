@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cryptainer — Material Design 3</title>
+<link href="https://fonts.googleapis.com/css2?family=Roboto:wght@300;400;500;700&family=Roboto+Flex:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Symbols+Rounded" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --md-primary:#6750a4;--md-on-primary:#fff;--md-primary-container:#eaddff;--md-on-primary-container:#21005d;
+  --md-secondary:#625b71;--md-secondary-container:#e8def8;--md-on-secondary-container:#1d192b;
+  --md-tertiary:#7d5260;--md-tertiary-container:#ffd8e4;
+  --md-surface:#fef7ff;--md-surface-dim:#ded8e1;--md-surface-container:#f3edf7;--md-surface-container-low:#f7f2fa;--md-surface-container-high:#ece6f0;
+  --md-on-surface:#1d1b20;--md-on-surface-variant:#49454f;--md-outline:#79747e;--md-outline-variant:#cac4d0;
+  --md-error:#b3261e;--md-error-container:#f9dedc;
+}
+body{font-family:'Roboto',sans-serif;background:var(--md-surface);color:var(--md-on-surface);min-height:100vh;line-height:1.5}
+
+@keyframes fadeUp{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
+@keyframes scaleIn{from{opacity:0;transform:scale(.95)}to{opacity:1;transform:scale(1)}}
+@keyframes slideRight{from{opacity:0;transform:translateX(-12px)}to{opacity:1;transform:translateX(0)}}
+.s1{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) .05s both}
+.s2{animation:fadeUp .4s cubic-bezier(.22,1,.36,1) .1s both}
+.s3{animation:scaleIn .4s cubic-bezier(.22,1,.36,1) .15s both}
+.s4{animation:scaleIn .4s cubic-bezier(.22,1,.36,1) .2s both}
+.s5{animation:scaleIn .4s cubic-bezier(.22,1,.36,1) .25s both}
+
+.material-symbols-rounded{font-variation-settings:'FILL' 0,'wght' 400,'GRAD' 0,'opsz' 24;font-size:20px}
+
+.app{display:grid;grid-template-columns:80px 1fr;min-height:100vh}
+
+/* NAV RAIL */
+.nav-rail{background:var(--md-surface);border-right:1px solid var(--md-outline-variant);padding:1rem 0;display:flex;flex-direction:column;align-items:center;gap:.5rem}
+.nav-rail-logo{width:56px;height:56px;background:var(--md-primary-container);border-radius:16px;display:flex;align-items:center;justify-content:center;margin-bottom:1rem;color:var(--md-on-primary-container)}
+.nav-rail-item{display:flex;flex-direction:column;align-items:center;gap:.25rem;padding:.5rem;cursor:pointer;transition:all .2s ease;border:none;background:none;width:56px}
+.nav-rail-item .icon-wrap{width:56px;height:32px;display:flex;align-items:center;justify-content:center;border-radius:16px;transition:all .2s ease;color:var(--md-on-surface-variant)}
+.nav-rail-item.active .icon-wrap{background:var(--md-secondary-container);color:var(--md-on-secondary-container)}
+.nav-rail-item:hover .icon-wrap{background:var(--md-surface-container-high)}
+.nav-rail-item .label{font-size:.65rem;font-weight:500;color:var(--md-on-surface-variant);transition:all .2s ease}
+.nav-rail-item.active .label{font-weight:700;color:var(--md-on-surface)}
+.nav-rail-fab{margin-top:auto;width:56px;height:56px;background:var(--md-primary-container);border:none;border-radius:16px;display:flex;align-items:center;justify-content:center;cursor:pointer;transition:all .2s ease;color:var(--md-on-primary-container)}
+.nav-rail-fab:hover{box-shadow:0 2px 6px rgba(0,0,0,.12)}
+
+/* MAIN */
+.main{padding:1.5rem 2rem 3rem;overflow-y:auto}
+.topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem}
+.topbar h1{font-family:'Roboto Flex',sans-serif;font-size:1.5rem;font-weight:400;letter-spacing:-.01em}
+.topbar-right{display:flex;gap:.5rem;align-items:center}
+
+.search-box{position:relative}
+.search-box input{width:280px;padding:.65rem 1rem .65rem 2.8rem;background:var(--md-surface-container);border:none;border-radius:28px;color:var(--md-on-surface);font-size:.9rem;font-family:inherit;outline:none;transition:all .2s ease}
+.search-box:focus-within{box-shadow:0 0 0 2px var(--md-primary)}
+.search-box input::placeholder{color:var(--md-on-surface-variant)}
+.search-box .material-symbols-rounded{position:absolute;left:.8rem;top:50%;transform:translateY(-50%);color:var(--md-on-surface-variant);font-size:20px}
+
+.btn{display:inline-flex;align-items:center;gap:.375rem;padding:.6rem 1.5rem;font-size:.85rem;font-weight:500;border-radius:20px;cursor:pointer;transition:all .2s ease;font-family:inherit;border:none;letter-spacing:.01em}
+.btn-primary{background:var(--md-primary);color:var(--md-on-primary);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.btn-primary:hover{box-shadow:0 2px 6px rgba(0,0,0,.15)}
+.btn-outline{background:transparent;color:var(--md-primary);border:1px solid var(--md-outline)}
+.btn-outline:hover{background:rgba(103,80,164,.08)}
+.btn-tonal{background:var(--md-secondary-container);color:var(--md-on-secondary-container);border:none}
+.btn-tonal:hover{box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.btn-icon{width:40px;height:40px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-radius:20px;color:var(--md-on-surface-variant);cursor:pointer;transition:all .2s ease}
+.btn-icon:hover{background:var(--md-surface-container-high)}
+
+.toolbar{display:flex;gap:.5rem;align-items:center;flex-wrap:wrap;margin-bottom:1.25rem}
+.sort{padding:.5rem 1rem;background:var(--md-surface-container);border:1px solid var(--md-outline-variant);border-radius:20px;color:var(--md-on-surface);font-size:.8rem;font-family:inherit;cursor:pointer;outline:none;font-weight:500}
+.tags{display:flex;gap:.375rem;flex-wrap:wrap}
+.tag{padding:.3rem .8rem;background:var(--md-secondary-container);border:none;border-radius:8px;font-size:.75rem;font-weight:500;color:var(--md-on-surface);cursor:pointer;transition:all .2s ease;letter-spacing:.01em}
+.tag:hover{box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.tag.active{background:var(--md-primary);color:var(--md-on-primary)}
+
+/* FAB + GRID */
+.fab-row{display:flex;gap:.75rem;margin-bottom:1.5rem}
+.fab{display:inline-flex;align-items:center;gap:.5rem;padding:.875rem 1.5rem;background:var(--md-primary-container);color:var(--md-on-primary-container);border:none;border-radius:16px;font-size:.875rem;font-weight:500;cursor:pointer;transition:all .2s ease;font-family:inherit;box-shadow:0 2px 6px rgba(0,0,0,.08)}
+.fab:hover{box-shadow:0 4px 12px rgba(0,0,0,.12)}
+.fab .material-symbols-rounded{font-size:20px}
+
+.grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:1rem}
+.card{background:var(--md-surface-container-low);border:1px solid var(--md-outline-variant);border-radius:16px;padding:1.5rem;cursor:pointer;transition:all .2s ease;position:relative;overflow:hidden}
+.card::after{content:'';position:absolute;inset:0;background:var(--md-primary);opacity:0;transition:opacity .2s ease;pointer-events:none}
+.card:hover{box-shadow:0 2px 6px rgba(0,0,0,.06)}
+.card:hover::after{opacity:.04}
+.card-top{display:flex;justify-content:space-between;align-items:center;margin-bottom:.75rem}
+.badge{font-size:.6rem;font-weight:500;padding:.15rem .5rem;background:var(--md-primary-container);color:var(--md-on-primary-container);border-radius:8px;letter-spacing:.01em}
+.badge.xcha{background:var(--md-tertiary-container);color:var(--md-tertiary)}
+.card-actions{display:flex;gap:.2rem;opacity:0;transition:opacity .2s ease}
+.card:hover .card-actions{opacity:1}
+.card-btn{width:32px;height:32px;display:flex;align-items:center;justify-content:center;background:transparent;border:none;border-radius:50%;color:var(--md-on-surface-variant);cursor:pointer;transition:all .15s ease}
+.card-btn:hover{background:var(--md-surface-container-high)}
+.card-btn.danger:hover{background:var(--md-error-container);color:var(--md-error)}
+.card-btn .material-symbols-rounded{font-size:18px}
+.card h3{font-size:1rem;font-weight:500;margin-bottom:.35rem;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;letter-spacing:.005em}
+.card-meta{display:flex;justify-content:space-between;font-size:.8rem;color:var(--md-on-surface-variant);margin-bottom:1rem}
+.card-stats{display:grid;grid-template-columns:1fr 1fr;gap:.5rem;padding-top:.875rem;border-top:1px solid var(--md-outline-variant)}
+.stat-label{font-size:.6rem;font-weight:500;color:var(--md-on-surface-variant);margin-bottom:.05rem;letter-spacing:.01em}
+.stat-value{font-size:.8rem;font-weight:500}
+
+@media(max-width:1024px){.app{grid-template-columns:1fr}.nav-rail{display:none}}
+@media(max-width:640px){.main{padding:1rem}.topbar{flex-direction:column;gap:1rem;align-items:flex-start}}
+</style>
+</head>
+<body>
+<div class="app">
+  <nav class="nav-rail">
+    <div class="nav-rail-logo"><span class="material-symbols-rounded" style="font-size:28px">lock</span></div>
+    <div class="nav-rail-item active"><div class="icon-wrap"><span class="material-symbols-rounded">grid_view</span></div><span class="label">Vault</span></div>
+    <div class="nav-rail-item"><div class="icon-wrap"><span class="material-symbols-rounded">search</span></div><span class="label">Search</span></div>
+    <div class="nav-rail-item"><div class="icon-wrap"><span class="material-symbols-rounded">upload_file</span></div><span class="label">Import</span></div>
+    <div class="nav-rail-item"><div class="icon-wrap"><span class="material-symbols-rounded">download</span></div><span class="label">Export</span></div>
+    <div class="nav-rail-item"><div class="icon-wrap"><span class="material-symbols-rounded">settings</span></div><span class="label">Settings</span></div>
+    <button class="nav-rail-fab"><span class="material-symbols-rounded">add</span></button>
+  </nav>
+
+  <main class="main">
+    <div class="topbar s1">
+      <h1>Containers</h1>
+      <div class="topbar-right">
+        <div class="search-box"><span class="material-symbols-rounded">search</span><input type="text" placeholder="Search containers"></div>
+        <button class="btn-icon"><span class="material-symbols-rounded">settings</span></button>
+      </div>
+    </div>
+
+    <div class="fab-row s2">
+      <button class="fab"><span class="material-symbols-rounded">add</span>New Container</button>
+      <button class="btn btn-tonal"><span class="material-symbols-rounded" style="font-size:18px">upload_file</span>Import</button>
+    </div>
+
+    <div class="toolbar s3">
+      <select class="sort"><option>Sort by Date</option><option>Sort by Name</option><option>Sort by Size</option></select>
+      <div class="tags"><button class="tag active">all</button><button class="tag">work</button><button class="tag">personal</button><button class="tag">backup</button></div>
+    </div>
+
+    <div class="grid">
+      <div class="card s4">
+        <div class="card-top"><span class="badge">AES-256-GCM</span><div class="card-actions"><button class="card-btn"><span class="material-symbols-rounded">download</span></button><button class="card-btn danger"><span class="material-symbols-rounded">delete</span></button></div></div>
+        <h3>Project Documents</h3><div class="card-meta"><span>24 files</span><span>156.3 MB</span></div>
+        <div class="card-stats"><div><div class="stat-label">Created</div><div class="stat-value">Jun 12, 2026</div></div><div><div class="stat-label">SHA-256</div><div class="stat-value">a3f8c1…</div></div></div>
+      </div>
+      <div class="card s5">
+        <div class="card-top"><span class="badge xcha">XChaCha20</span><div class="card-actions"><button class="card-btn"><span class="material-symbols-rounded">download</span></button><button class="card-btn danger"><span class="material-symbols-rounded">delete</span></button></div></div>
+        <h3>Photos 2026</h3><div class="card-meta"><span>148 files</span><span>2.4 GB</span></div>
+        <div class="card-stats"><div><div class="stat-label">Created</div><div class="stat-value">May 3, 2026</div></div><div><div class="stat-label">SHA-256</div><div class="stat-value">7b2d9e…</div></div></div>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="badge">AES-256-GCM</span><div class="card-actions"><button class="card-btn"><span class="material-symbols-rounded">download</span></button><button class="card-btn danger"><span class="material-symbols-rounded">delete</span></button></div></div>
+        <h3>Financial Records</h3><div class="card-meta"><span>8 files</span><span>34.7 MB</span></div>
+        <div class="card-stats"><div><div class="stat-label">Created</div><div class="stat-value">Apr 18, 2026</div></div><div><div class="stat-label">SHA-256</div><div class="stat-value">e1c4f0…</div></div></div>
+      </div>
+      <div class="card">
+        <div class="card-top"><span class="badge xcha">XChaCha20</span><div class="card-actions"><button class="card-btn"><span class="material-symbols-rounded">download</span></button><button class="card-btn danger"><span class="material-symbols-rounded">delete</span></button></div></div>
+        <h3>Source Code Backup</h3><div class="card-meta"><span>312 files</span><span>89.1 MB</span></div>
+        <div class="card-stats"><div><div class="stat-label">Created</div><div class="stat-value">Jun 1, 2026</div></div><div><div class="stat-label">SHA-256</div><div class="stat-value">9a3b7c…</div></div></div>
+      </div>
+    </div>
+  </main>
+</div>
+</body>
+</html>

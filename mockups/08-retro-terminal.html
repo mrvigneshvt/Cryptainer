@@ -1,0 +1,153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Cryptainer — Retro Terminal</title>
+<link href="https://fonts.googleapis.com/css2?family=VT323&family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+*,*::before,*::after{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Share Tech Mono',monospace;background:#0a0c0a;color:#33ff33;min-height:100vh;line-height:1.6;text-shadow:0 0 4px rgba(51,255,51,.3)}
+body::before{content:'';position:fixed;inset:0;background:repeating-linear-gradient(0deg,rgba(0,0,0,.12) 0px,rgba(0,0,0,.12) 1px,transparent 1px,transparent 3px);pointer-events:none;z-index:9999}
+
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0}}
+@keyframes typewriter{from{width:0}to{width:100%}}
+@keyframes fadeUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes slideDown{from{opacity:0;transform:translateY(-8px)}to{opacity:1;transform:translateY(0)}}
+.s1{animation:slideDown .3s ease .05s both}
+.s2{animation:fadeUp .3s ease .1s both}
+.s3{animation:fadeUp .3s ease .15s both}
+.s4{animation:fadeUp .3s ease .2s both}
+.s5{animation:fadeUp .3s ease .25s both}
+
+.app{display:grid;grid-template-columns:260px 1fr;min-height:100vh}
+
+/* SIDEBAR */
+.sidebar{background:#0d100d;border-right:1px solid #1a3a1a;padding:1.25rem;display:flex;flex-direction:column;gap:1rem}
+.sidebar-logo{display:flex;align-items:center;gap:.5rem;font-family:'VT323',monospace;font-size:1.4rem;letter-spacing:.08em;padding-bottom:.75rem;border-bottom:1px solid #1a3a1a}
+.sidebar-logo .icon{width:30px;height:30px;border:1px solid #33ff33;display:flex;align-items:center;justify-content:center;box-shadow:0 0 8px rgba(51,255,51,.25)}
+.sidebar-logo .icon svg{width:14px;height:14px;stroke:#33ff33;fill:none;stroke-width:2}
+.sidebar-logo .blink{animation:blink 1s steps(2) infinite}
+.nav-section{font-size:.6rem;letter-spacing:.15em;text-transform:uppercase;color:#1a5a1a;padding:.5rem 0 .25rem}
+.nav-item{display:flex;align-items:center;gap:.5rem;padding:.4rem .5rem;color:#1a8a1a;font-size:.85rem;cursor:pointer;transition:all .15s ease;position:relative}
+.nav-item:hover{color:#33ff33;background:rgba(51,255,51,.03)}
+.nav-item.active{color:#33ff33}
+.nav-item.active::before{content:'>';margin-right:.25rem;animation:blink 1s steps(2) infinite}
+.nav-item .badge{margin-left:auto;font-size:.6rem;border:1px solid #1a3a1a;padding:.1rem .3rem}
+
+.terminal-output{flex:1;margin-top:1rem;padding:.75rem;border:1px solid #1a3a1a;background:rgba(0,0,0,.3);font-size:.7rem;color:#1a5a1a;line-height:1.8;overflow-y:auto}
+.terminal-output .line{color:#33ff33}
+.terminal-output .comment{color:#1a5a1a}
+.terminal-output .highlight{color:#00ffff}
+
+.sidebar-actions{display:flex;flex-direction:column;gap:.375rem;margin-top:auto}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:.4rem;padding:.45rem .75rem;font-size:.75rem;font-family:inherit;border:1px solid #1a3a1a;cursor:pointer;transition:all .15s ease;background:transparent;color:#33ff33;text-shadow:0 0 4px rgba(51,255,51,.3)}
+.btn:hover{border-color:#33ff33;background:rgba(51,255,51,.05);box-shadow:0 0 8px rgba(51,255,51,.15)}
+.btn svg{width:12px;height:12px;stroke:currentColor;fill:none;stroke-width:2}
+
+/* MAIN */
+.main{display:flex;flex-direction:column;border-left:1px solid #1a3a1a}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:.5rem 1rem;border-bottom:1px solid #1a3a1a;background:#0d100d}
+.topbar-title{font-family:'VT323',monospace;font-size:1rem;letter-spacing:.06em;color:#33ff33}
+.topbar-right{display:flex;gap:.375rem;align-items:center}
+.btn-icon{width:28px;height:28px;padding:0;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid #1a3a1a;color:#1a8a1a;cursor:pointer;transition:all .15s ease}
+.btn-icon:hover{border-color:#33ff33;color:#33ff33;box-shadow:0 0 6px rgba(51,255,51,.15)}
+.search-box{position:relative}
+.search-box input{width:180px;padding:.3rem .6rem .3rem 1.8rem;background:transparent;border:1px solid #1a3a1a;color:#33ff33;font-size:.75rem;font-family:inherit;outline:none;text-shadow:0 0 4px rgba(51,255,51,.3)}
+.search-box input:focus{border-color:#33ff33;box-shadow:0 0 6px rgba(51,255,51,.15)}
+.search-box input::placeholder{color:#1a5a1a;text-shadow:none}
+.search-box svg{position:absolute;left:.5rem;top:50%;transform:translateY(-50%);width:12px;height:12px;stroke:#1a5a1a;fill:none;stroke-width:2}
+
+.toolbar{display:flex;gap:.375rem;align-items:center;padding:.375rem 1rem;border-bottom:1px solid #1a3a1a;background:#0a0c0a}
+.toolbar::before{content:'$ ';color:#1a8a1a;font-size:.75rem}
+.sort{padding:.25rem .5rem;background:transparent;border:1px solid #1a3a1a;color:#33ff33;font-size:.65rem;font-family:inherit;cursor:pointer;outline:none}
+.tags{display:flex;gap:.25rem;margin-left:.5rem}
+.tag{padding:.15rem .4rem;background:transparent;border:1px solid #1a3a1a;font-size:.6rem;color:#1a8a1a;cursor:pointer;transition:all .15s ease}
+.tag::before{content:'#';opacity:.4}
+.tag:hover,.tag.active{border-color:#33ff33;color:#33ff33;background:rgba(51,255,51,.04)}
+
+/* TABLE */
+.table-area{flex:1;overflow-y:auto}
+.table{width:100%;border-collapse:collapse}
+.table th{font-size:.55rem;letter-spacing:.12em;text-transform:uppercase;color:#1a5a1a;text-align:left;padding:.4rem .75rem;border-bottom:1px solid #1a3a1a;background:#0d100d;position:sticky;top:0}
+.table td{padding:.5rem .75rem;border-bottom:1px solid #0d1a0d;font-size:.8rem;transition:all .12s ease}
+.table tr{cursor:pointer;transition:all .12s ease}
+.table tbody tr:hover{background:rgba(51,255,51,.02)}
+.table tbody tr:hover td{color:#33ff33}
+.table .name-cell{font-weight:500;color:#d1ffd7}
+.table .name-sub{display:block;font-size:.55rem;color:#1a5a1a;margin-top:1px}
+.table .badge{font-size:.55rem;padding:.1rem .3rem;border:1px solid;display:inline-block}
+.table .badge.aes{border-color:#33ff33;color:#33ff33}
+.table .badge.xcha{border-color:#ff00ff;color:#ff00ff}
+.table .status{display:flex;align-items:center;gap:.3rem;font-size:.6rem;letter-spacing:.08em;text-transform:uppercase;color:#33ff33}
+.table .status-dot{width:5px;height:5px;background:#33ff33;box-shadow:0 0 6px rgba(51,255,51,.5);animation:blink 1.4s steps(2) infinite}
+.table .actions{display:flex;gap:.2rem;opacity:0;transition:opacity .12s ease}
+.table tbody tr:hover .actions{opacity:1}
+.table .act{width:24px;height:24px;display:flex;align-items:center;justify-content:center;background:transparent;border:1px solid #1a3a1a;color:#1a8a1a;cursor:pointer;transition:all .12s ease}
+.table .act:hover{border-color:#33ff33;color:#33ff33;box-shadow:0 0 4px rgba(51,255,51,.15)}
+.table .act.danger:hover{border-color:#ff003c;color:#ff003c;box-shadow:0 0 4px rgba(255,0,60,.15)}
+.table .act svg{width:10px;height:10px;stroke:currentColor;fill:none;stroke-width:2}
+
+.statusbar{display:flex;justify-content:space-between;padding:.3rem 1rem;border-top:1px solid #1a3a1a;background:#0d100d;font-size:.6rem;color:#1a5a1a}
+
+@media(max-width:1024px){.app{grid-template-columns:1fr}.sidebar{display:none}}
+@media(max-width:640px){.main{font-size:.7rem}}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="sidebar">
+    <div class="sidebar-logo s1">
+      <div class="icon"><svg viewBox="0 0 24 24"><rect x="4" y="10" width="16" height="10" rx="1.5"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/><circle cx="12" cy="15" r="1.25" fill="currentColor" stroke="none"/></svg></div>
+      CRYPTAINER<span class="blink">_</span>
+    </div>
+    <div class="nav-section">VAULT</div>
+    <div class="nav-item active">containers<span class="badge">4</span></div>
+    <div class="nav-item">search</div>
+    <div class="nav-item">import</div>
+    <div class="nav-item">export</div>
+    <div class="nav-section">SYSTEM</div>
+    <div class="nav-item">settings</div>
+    <div class="nav-item">about</div>
+    <div class="terminal-output s2">
+      <div class="comment"># session log</div>
+      <div class="line">> vault initialized</div>
+      <div class="line">> 4 containers loaded</div>
+      <div class="line">> 2.7 GB encrypted</div>
+      <div class="line">> status: <span class="highlight">SECURED</span></div>
+      <div class="comment"># awaiting input...</div>
+    </div>
+    <div class="sidebar-actions s3">
+      <button class="btn"><svg viewBox="0 0 24 24"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>NEW CNTNR</button>
+      <button class="btn"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 8 12 3 17 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>IMPORT</button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="topbar s4">
+      <div class="topbar-title">VAULT://containers</div>
+      <div class="topbar-right">
+        <div class="search-box"><svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg><input type="text" placeholder="grep…"></div>
+        <select class="sort"><option>--sort=date</option><option>--sort=name</option><option>--sort=size</option></select>
+        <button class="btn-icon"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6 1.65 1.65 0 0 0 10 3.09V3a2 2 0 0 1 4 0v.09A1.65 1.65 0 0 0 15 4.6a1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.36.16.66.42.86.74s.3.69.27 1.06H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>
+      </div>
+    </div>
+    <div class="toolbar s5">
+      <div class="tags"><button class="tag active">all</button><button class="tag">work</button><button class="tag">personal</button><button class="tag">backup</button></div>
+    </div>
+    <div class="table-area">
+      <table class="table">
+        <thead><tr><th>Name</th><th>Algo</th><th>Size</th><th>Files</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <tr><td class="name-cell">PROJECT_DOCUMENTS<span class="name-sub">id=a3f8c1d9 · sha=a3f8c1d9e4b2</span></td><td><span class="badge aes">AES-256-GCM</span></td><td>156.3 MB</td><td>24</td><td><span class="status"><span class="status-dot"></span>LOCKED</span></td><td class="actions"><button class="act"><svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></button><button class="act danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td></tr>
+          <tr><td class="name-cell">PHOTOS_2026<span class="name-sub">id=7b2d9e1f · sha=7b2d9e1fa8c3</span></td><td><span class="badge xcha">XChaCha20</span></td><td>2.4 GB</td><td>148</td><td><span class="status"><span class="status-dot"></span>LOCKED</span></td><td class="actions"><button class="act"><svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></button><button class="act danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td></tr>
+          <tr><td class="name-cell">FINANCIAL_RECORDS<span class="name-sub">id=e1c4f0a2 · sha=e1c4f0a2b7d5</span></td><td><span class="badge aes">AES-256-GCM</span></td><td>34.7 MB</td><td>8</td><td><span class="status"><span class="status-dot"></span>LOCKED</span></td><td class="actions"><button class="act"><svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></button><button class="act danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td></tr>
+          <tr><td class="name-cell">SOURCE_CODE_BACKUP<span class="name-sub">id=9a3b7cf2 · sha=9a3b7cf2d1e6</span></td><td><span class="badge xcha">XChaCha20</span></td><td>89.1 MB</td><td>312</td><td><span class="status"><span class="status-dot"></span>LOCKED</span></td><td class="actions"><button class="act"><svg viewBox="0 0 24 24"><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/></svg></button><button class="act danger"><svg viewBox="0 0 24 24"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg></button></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="statusbar"><span>4 containers · 492 files · 2.7 GB</span><span>ENCRYPTION: AES-256-GCM | XChaCha20</span></div>
+  </main>
+</div>
+</body>
+</html>

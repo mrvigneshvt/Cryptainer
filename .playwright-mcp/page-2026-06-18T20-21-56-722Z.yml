@@ -1,0 +1,45 @@
+- generic [ref=e3]:
+  - banner [ref=e4]:
+    - text: "[SESSION_ACTIVE]"
+    - generic [ref=e5] [cursor=pointer]:
+      - img [ref=e7]
+      - generic [ref=e11]:
+        - generic [ref=e12]: CRYPT
+        - generic [ref=e13]: AINER
+        - generic [ref=e54]: ▌
+    - generic [ref=e14]:
+      - button "Switch to PRISM (light) theme" [active] [ref=e55] [cursor=pointer]:
+        - img [ref=e18]
+        - generic [ref=e24]: "> CIPHER"
+      - button "Settings" [ref=e25] [cursor=pointer]:
+        - img [ref=e26]
+      - button "> import .ctnr" [ref=e57] [cursor=pointer]:
+        - text: ">"
+        - img [ref=e30]
+        - generic [ref=e33]: import .ctnr
+      - button "$ new ctnr" [ref=e58] [cursor=pointer]:
+        - text: $
+        - img [ref=e35]
+        - generic [ref=e36]: new ctnr
+  - generic [ref=e37]:
+    - text: $ filter --type=container
+    - generic [ref=e38]:
+      - textbox "Search containers" [ref=e39]:
+        - /placeholder: grep containers…
+      - generic:
+        - img
+    - combobox "Sort containers" [ref=e40] [cursor=pointer]:
+      - option "Sort by Date" [selected]
+      - option "Sort by Name"
+      - option "Sort by Size"
+      - option "Sort by Files"
+  - main [ref=e41]:
+    - generic [ref=e42]:
+      - img [ref=e44]
+      - heading "> VAULT_EMPTY" [level=2] [ref=e59]
+      - paragraph [ref=e49]: No encrypted containers found. Initialize one to begin.
+      - button "$ init ctnr" [ref=e60] [cursor=pointer]:
+        - text: $
+        - img [ref=e51]
+        - generic [ref=e52]: init ctnr
+  - generic [ref=e53] [cursor=pointer]: "[ERR] TypeError: Cannot read properties of undefined (reading 'invoke')"
