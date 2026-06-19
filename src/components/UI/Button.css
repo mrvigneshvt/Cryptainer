@@ -28,7 +28,7 @@
 
 .btn-primary {
   background-color: var(--accent);
-  color: var(--bg-primary);
+  color: var(--accent-on);
 }
 
 .btn-primary:hover:not(:disabled) {
@@ -53,7 +53,7 @@
 
 .btn-danger:hover:not(:disabled) {
   background-color: var(--error);
-  color: var(--bg-primary);
+  color: var(--accent-on);
 }
 
 .btn-ghost {

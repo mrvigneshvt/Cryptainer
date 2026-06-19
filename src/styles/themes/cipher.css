@@ -36,6 +36,7 @@
   --accent-dim:        rgba(16, 185, 129, 0.12);
   --accent-glow:       rgba(16, 185, 129, 0.25);
   --accent-on:         #09090b;
+  --gradient-accent:   linear-gradient(135deg, #10b981 0%, #34d399 100%);
 
   /* Status */
   --success:           #22c55e;
