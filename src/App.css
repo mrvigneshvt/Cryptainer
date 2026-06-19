@@ -22,6 +22,8 @@
   position: sticky;
   top: 0;
   height: 100vh;
+  width: 260px;
+  min-width: 260px;
 }
 
 .sidebar-logo {
