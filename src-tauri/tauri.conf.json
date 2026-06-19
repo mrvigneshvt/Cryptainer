@@ -13,10 +13,10 @@
     "windows": [
       {
         "title": "Cryptainer",
-        "width": 1100,
-        "height": 720,
-        "minWidth": 800,
-        "minHeight": 600,
+        "width": 1200,
+        "height": 800,
+        "minWidth": 375,
+        "minHeight": 500,
         "resizable": true,
         "center": true
       }

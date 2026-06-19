@@ -139,6 +139,37 @@
   background-color: var(--success);
 }
 
+/* Sidebar Mobile Overlay */
+.sidebar-overlay {
+  position: fixed;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.6);
+  z-index: 900;
+  animation: fadeIn var(--transition-fast) var(--ease-out);
+}
+
+/* Mobile hamburger */
+.topbar-hamburger {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  background: none;
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-md);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  flex-shrink: 0;
+}
+
+.topbar-hamburger:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+  border-color: var(--border-hover);
+}
+
 /* ============================================================================
    MAIN CONTENT
    ============================================================================ */
@@ -662,10 +693,36 @@
 
 /* ============================================================================
    RESPONSIVE
-   Mobile: < 640px | Tablet: 640-1024px | Desktop: > 1024px
+   Breakpoints:
+   375px - Mobile portrait  (sidebar hidden, 1-col)
+   768px - Tablet portrait   (sidebar hidden, 2-col)
+   1024px - Desktop          (sidebar visible, 3-col)
+   1440px - Wide desktop     (sidebar visible, 4-col)
    ============================================================================ */
 
-@media (max-width: 1024px) {
+/* Tablet and below — sidebar collapsed */
+@media (max-width: 1023px) {
+  .sidebar-mobile {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 280px;
+    max-width: 85vw;
+    z-index: 1000;
+    transform: translateX(-100%);
+    transition: transform var(--transition-normal) var(--ease-out);
+    box-shadow: var(--shadow-lg);
+  }
+
+  .sidebar-mobile.sidebar-open {
+    transform: translateX(0);
+  }
+
+  .app {
+    grid-template-columns: 1fr;
+  }
+
   .bento-grid {
     grid-template-columns: repeat(2, 1fr);
   }
@@ -679,15 +736,8 @@
   }
 }
 
+/* Mobile portrait (< 640px) */
 @media (max-width: 639px) {
-  .app {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    display: none;
-  }
-
   .topbar {
     padding: 0.75rem 1rem;
     flex-wrap: wrap;
@@ -775,7 +825,7 @@
 }
 
 /* Tablet */
-@media (min-width: 640px) and (max-width: 1024px) {
+@media (min-width: 640px) and (max-width: 1023px) {
   .topbar {
     padding: 1rem;
   }
@@ -795,12 +845,27 @@
 
 /* Landscape on mobile */
 @media (max-width: 899px) and (orientation: landscape) {
-  .sidebar {
-    display: none;
+  .sidebar-mobile {
+    max-width: 70vw;
   }
 
   .app {
     grid-template-columns: 1fr;
+  }
+}
+
+/* Wide desktop (> 1440px) */
+@media (min-width: 1440px) {
+  .bento-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+
+  .bento-featured {
+    grid-column: span 2;
+  }
+
+  .stats-row {
+    grid-template-columns: repeat(4, 1fr);
   }
 }
 
@@ -811,7 +876,8 @@
   .btn-secondary,
   .sidebar-nav-item,
   .tag-chip,
-  .topbar-search-clear {
+  .topbar-search-clear,
+  .topbar-hamburger {
     min-height: 44px;
   }
 }

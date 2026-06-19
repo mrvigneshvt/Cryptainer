@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useVaultStore } from './store/vaultStore';
 import { CreateWizard } from './components/Container/CreateWizard';
 import { ContainerModal } from './components/Container/ContainerModal';
 import { Settings } from './components/Settings';
 import { useAutoLock } from './hooks/useAutoLock';
+import { useMediaQuery } from './hooks/useMediaQuery';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { ContainerMeta } from './types/vault';
 import { formatBytes } from './utils/format';
@@ -19,6 +20,34 @@ function App() {
   const [isImporting, setIsImporting] = useState(false);
   const [activeNav, setActiveNav] = useState<NavSection>('containers');
   const [showSettings, setShowSettings] = useState(false);
+
+  // Responsive sidebar state
+  const { isMobile, isTablet } = useMediaQuery();
+  const isSmallScreen = isMobile || isTablet;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Close sidebar on escape key
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && sidebarOpen) {
+        setSidebarOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [sidebarOpen]);
+
+  // Focus trap: focus sidebar when opened
+  useEffect(() => {
+    if (sidebarOpen && sidebarRef.current) {
+      const firstFocusable = sidebarRef.current.querySelector('button');
+      if (firstFocusable) setTimeout(() => firstFocusable.focus(), 50);
+    }
+  }, [sidebarOpen]);
+
+  // Close sidebar on route change
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
 
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('');
@@ -145,8 +174,23 @@ function App() {
 
   return (
     <div className="app">
+      {/* ============ MOBILE SIDEBAR OVERLAY ============ */}
+      {isSmallScreen && sidebarOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={closeSidebar}
+          aria-hidden="true"
+        />
+      )}
+
       {/* ============ SIDEBAR ============ */}
-      <aside className="sidebar" role="navigation" aria-label="Main navigation">
+      <aside
+        ref={sidebarRef}
+        className={`sidebar ${isSmallScreen ? 'sidebar-mobile' : ''} ${sidebarOpen ? 'sidebar-open' : ''}`}
+        role="navigation"
+        aria-label="Main navigation"
+        aria-hidden={isSmallScreen && !sidebarOpen}
+      >
         <div className="sidebar-logo">
           <svg className="sidebar-logo-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
@@ -159,7 +203,7 @@ function App() {
           <div className="sidebar-section-label">Navigation</div>
           <button
             className={`sidebar-nav-item ${activeNav === 'containers' ? 'active' : ''}`}
-            onClick={() => setActiveNav('containers')}
+            onClick={() => { setActiveNav('containers'); closeSidebar(); }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 12h-4l-3 9-4-18-3 9H2" />
@@ -170,7 +214,7 @@ function App() {
 
           <button
             className="sidebar-nav-item"
-            onClick={handleImport}
+            onClick={() => { handleImport(); closeSidebar(); }}
             disabled={isImporting}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -183,7 +227,7 @@ function App() {
 
           <button
             className="sidebar-nav-item"
-            onClick={() => setShowCreate(true)}
+            onClick={() => { setShowCreate(true); closeSidebar(); }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="12" y1="5" x2="12" y2="19" />
@@ -199,7 +243,7 @@ function App() {
           <div className="sidebar-section-label">System</div>
           <button
             className="sidebar-nav-item"
-            onClick={() => setShowSettings(true)}
+            onClick={() => { setShowSettings(true); closeSidebar(); }}
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <circle cx="12" cy="12" r="3" />
@@ -222,6 +266,27 @@ function App() {
         {/* Topbar */}
         <div className="topbar">
           <div className="topbar-left">
+            {isSmallScreen && (
+              <button
+                className="topbar-hamburger"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                aria-label={sidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                aria-expanded={sidebarOpen}
+              >
+                {sidebarOpen ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                  </svg>
+                )}
+              </button>
+            )}
             <h1 className="topbar-title">Containers</h1>
           </div>
           <div className="topbar-right">
