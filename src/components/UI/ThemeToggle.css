@@ -62,7 +62,7 @@
 }
 
 /* ============================================================================
-   CIPHER — terminal look
+   CIPHER — dark theme override (emerald glow)
    ============================================================================ */
 :root[data-theme="cipher"] .theme-toggle {
   background: transparent;
@@ -70,13 +70,13 @@
   border-radius: 0;
   padding: 0.375rem 0.625rem 0.375rem 0.375rem;
   color: var(--accent);
-  text-shadow: 0 0 6px rgba(0,255,65,0.55);
+  text-shadow: none;
 }
 
 :root[data-theme="cipher"] .theme-toggle:hover {
   background: var(--accent-dim);
   border-color: var(--accent);
-  box-shadow: 0 0 12px rgba(0,255,65,0.45);
+  box-shadow: var(--shadow-glow);
   transform: none;
 }
 
@@ -85,7 +85,7 @@
   border: 1px solid var(--accent);
   border-radius: 0;
   color: var(--accent);
-  box-shadow: 0 0 8px rgba(0,255,65,0.35);
+  box-shadow: 0 0 0 1px var(--accent-dim);
 }
 
 :root[data-theme="cipher"] .theme-toggle-thumb {

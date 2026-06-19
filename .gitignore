@@ -52,3 +52,6 @@ Thumbs.db
 
 # AI editor workspace files
 .opencode/
+
+# Playwright MCP screenshots
+.playwright-mcp/
