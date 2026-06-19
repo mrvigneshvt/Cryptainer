@@ -8,7 +8,7 @@
 .plain-text {
   padding: 1.5rem;
   margin: 0;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.875rem;
   line-height: 1.6;
   color: var(--text-primary);
@@ -19,7 +19,7 @@
 .code-preview pre {
   margin: 0;
   padding: 1rem 0;
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.8125rem;
   line-height: 1.5;
 }
@@ -30,7 +30,7 @@
 }
 
 .code-preview pre > div:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--bg-hover);
 }
 
 .line-number {
