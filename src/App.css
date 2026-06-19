@@ -143,7 +143,7 @@
 .sidebar-overlay {
   position: fixed;
   inset: 0;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: var(--bg-overlay);
   z-index: 900;
   animation: fadeIn var(--transition-fast) var(--ease-out);
 }
