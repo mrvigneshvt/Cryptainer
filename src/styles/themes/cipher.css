@@ -1,0 +1,89 @@
+/* =============================================================================
+   CIPHER — Dark theme (Minimalist Dark)
+   Minimal, dark zinc base with emerald green accent. Clean, modern,
+   generous whitespace. Replaces the previous hacker/cyberdeck aesthetic.
+   ============================================================================= */
+
+:root[data-theme="cipher"] {
+  /* Surface — dark zinc palette */
+  --bg:                #09090b;
+  --bg-primary:        #09090b;
+  --bg-primary-grad:   #09090b;
+  --bg-card:           #18181b;
+  --bg-secondary:      #18181b;
+  --bg-elevated:       #27272a;
+  --bg-tertiary:       #27272a;
+  --bg-hover:          #3f3f46;
+  --bg-overlay:        rgba(0, 0, 0, 0.75);
+
+  /* Border */
+  --border:            #27272a;
+  --border-color:      #27272a;
+  --border-hover:      #52525b;
+  --border-color-hover:#52525b;
+  --border-strong:     #52525b;
+
+  /* Text */
+  --text:              #fafafa;
+  --text-primary:      #fafafa;
+  --text-secondary:    #a1a1aa;
+  --text-muted:        #71717a;
+
+  /* Accent — emerald green */
+  --accent:            #10b981;
+  --accent-light:      #34d399;
+  --accent-hover:      #34d399;
+  --accent-dim:        rgba(16, 185, 129, 0.12);
+  --accent-glow:       rgba(16, 185, 129, 0.25);
+  --accent-on:         #09090b;
+
+  /* Status */
+  --success:           #22c55e;
+  --success-dim:       rgba(34, 197, 94, 0.14);
+  --error:             #ef4444;
+  --error-dim:         rgba(239, 68, 68, 0.14);
+
+  /* Shape — soft rounded corners */
+  --radius-sm:         8px;
+  --radius-md:         12px;
+  --radius-lg:         16px;
+  --radius-xl:         20px;
+  --radius-pill:       999px;
+
+  /* Shadow */
+  --shadow-sm:         0 1px 2px rgba(0, 0, 0, 0.30);
+  --shadow-md:         0 8px 24px rgba(0, 0, 0, 0.35);
+  --shadow-lg:         0 24px 48px rgba(0, 0, 0, 0.45);
+  --shadow-glow:       0 0 0 1px var(--accent-dim), 0 0 24px var(--accent-glow);
+
+  /* Motion */
+  --ease-out:          cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out:       cubic-bezier(0.65, 0, 0.35, 1);
+  --transition-fast:   180ms var(--ease-out);
+  --transition-normal: 320ms var(--ease-out);
+  --transition-slow:   520ms var(--ease-out);
+
+  /* Typography */
+  --font-sans:         "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-display:      "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-mono:         "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+
+  /* Layout */
+  --container-max:     1200px;
+  --navbar-float:      16px;
+  --grid-gap:          20px;
+
+  /* Glass blur */
+  --glass-blur:        blur(16px) saturate(180%);
+  --glass-blur-strong: blur(24px) saturate(200%);
+
+  /* Theme metadata */
+  --theme-id:          "cipher";
+  --theme-noise-opacity: 0;
+  --theme-scan-opacity:  0;
+}
+
+/* CIPHER-specific body background */
+:root[data-theme="cipher"] body {
+  background-color: #09090b;
+}

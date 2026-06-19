@@ -1,0 +1,104 @@
+/* Theme toggle — visually adapts based on current theme */
+
+.theme-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.375rem 0.625rem 0.375rem 0.375rem;
+  background: var(--bg-secondary);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  color: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: all var(--transition-fast);
+  white-space: nowrap;
+}
+
+.theme-toggle:hover {
+  color: var(--text-primary);
+  border-color: var(--border-color-hover);
+  background: var(--bg-tertiary);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
+.theme-toggle-track {
+  position: relative;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--gradient-accent);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+}
+
+.theme-toggle-thumb {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--accent-on);
+  transition: transform var(--transition-normal);
+}
+
+.theme-toggle:hover .theme-toggle-thumb {
+  transform: rotate(20deg) scale(1.05);
+}
+
+.theme-toggle-label {
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+  padding-right: 0.125rem;
+}
+
+/* ============================================================================
+   CIPHER — dark theme override (emerald glow)
+   ============================================================================ */
+:root[data-theme="cipher"] .theme-toggle {
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 0;
+  padding: 0.375rem 0.625rem 0.375rem 0.375rem;
+  color: var(--accent);
+  text-shadow: none;
+}
+
+:root[data-theme="cipher"] .theme-toggle:hover {
+  background: var(--accent-dim);
+  border-color: var(--accent);
+  box-shadow: var(--shadow-glow);
+  transform: none;
+}
+
+:root[data-theme="cipher"] .theme-toggle-track {
+  background: var(--bg-tertiary);
+  border: 1px solid var(--accent);
+  border-radius: 0;
+  color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent-dim);
+}
+
+:root[data-theme="cipher"] .theme-toggle-thumb {
+  color: var(--accent);
+}
+
+:root[data-theme="cipher"] .theme-toggle-label {
+  color: var(--accent);
+  font-weight: 500;
+}
+
+:root[data-theme="cipher"] .theme-toggle-label::before {
+  content: "> ";
+  color: var(--text-muted);
+  text-shadow: none;
+}

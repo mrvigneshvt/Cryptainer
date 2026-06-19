@@ -1,0 +1,70 @@
+- generic [ref=e1]:
+  - generic [ref=e2]:
+    - heading "Components — CIPHER" [level=2] [ref=e53]
+    - button "> CIPHER" [ref=e54] [cursor=pointer]:
+      - img [ref=e7]
+      - generic [ref=e9]: "> CIPHER"
+  - generic [ref=e10]: Buttons
+  - generic [ref=e11]:
+    - button "$ Create Container" [ref=e55] [cursor=pointer]
+    - button "> Import .ctnr" [ref=e56] [cursor=pointer]
+    - button "Delete" [ref=e14] [cursor=pointer]
+    - button "Cancel" [ref=e15] [cursor=pointer]
+    - button "$ Small" [ref=e57] [cursor=pointer]
+  - generic [ref=e17]: Inputs
+  - generic [ref=e18]:
+    - generic [ref=e20]:
+      - generic [ref=e21]: "> Container name"
+      - textbox "my-secure-vault" [ref=e23]
+    - generic [ref=e25]:
+      - generic [ref=e26]: "> Password"
+      - generic [ref=e27]:
+        - textbox [ref=e28]: hunter2hunter2
+        - button [ref=e29] [cursor=pointer]:
+          - img [ref=e30]
+  - generic [ref=e33]: Tags
+  - generic [ref=e35]:
+    - button "#work" [ref=e58] [cursor=pointer]
+    - button "#personal" [ref=e59] [cursor=pointer]
+    - button "#archive" [ref=e60] [cursor=pointer]
+    - button "× Clear" [ref=e61] [cursor=pointer]
+  - generic [ref=e40]: DropZone
+  - generic [ref=e44] [cursor=pointer]:
+    - img [ref=e46]
+    - paragraph [ref=e48]: Drag & drop files here, or click to select
+    - generic [ref=e49]: "# All files will be encrypted"
+  - generic [ref=e50]: Modal (open to see)
+  - button "$ Open Settings Modal" [active] [ref=e62] [cursor=pointer]
+  - generic [ref=e64]:
+    - text: "[ -o ] [ x ]"
+    - generic [ref=e65]:
+      - heading "$ Settings // config" [level=3] [ref=e66]
+      - button "×" [ref=e67] [cursor=pointer]
+    - generic [ref=e69]:
+      - generic [ref=e70]:
+        - heading "> security" [level=3] [ref=e71]
+        - generic [ref=e72]:
+          - generic [ref=e73]: $ default_kdf_preset
+          - generic [ref=e74]:
+            - button "Fast" [ref=e75] [cursor=pointer]
+            - button "Standard" [ref=e76] [cursor=pointer]
+            - button "High" [ref=e77] [cursor=pointer]
+            - button "Paranoid" [ref=e78] [cursor=pointer]
+        - generic [ref=e79]:
+          - generic [ref=e80]: $ auto_lock_timeout
+          - combobox [ref=e81] [cursor=pointer]:
+            - option "1 minute"
+            - option "5 minutes" [selected]
+            - option "15 minutes"
+            - option "Never"
+          - paragraph [ref=e82]: "# auto-lock after N ms of inactivity"
+      - generic [ref=e83]:
+        - heading "> appearance" [level=3] [ref=e84]
+        - generic [ref=e85]:
+          - generic [ref=e86]: $ theme_mode
+          - generic [ref=e87]:
+            - button "Prism" [ref=e88] [cursor=pointer]
+            - button "Cipher" [ref=e89] [cursor=pointer]
+      - generic [ref=e90]:
+        - button "> abort" [ref=e91] [cursor=pointer]
+        - button "$ commit" [ref=e92] [cursor=pointer]

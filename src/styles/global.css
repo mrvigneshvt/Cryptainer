@@ -1,38 +1,16 @@
-/* CSS Custom Properties - Theme System */
-:root {
-  /* Dark Theme (Default) */
-  --bg-primary: #080b0f;
-  --bg-secondary: #0d1520;
-  --bg-tertiary: #111927;
-  --border-color: #1a2535;
-  --border-color-hover: #2a3a50;
-  
-  --text-primary: #ffffff;
-  --text-secondary: #8b9ab0;
-  --text-muted: #5a6b80;
-  
-  --accent: #4de0c0;
-  --accent-hover: #3bc9aa;
-  --accent-dim: rgba(77, 224, 192, 0.1);
-  
-  --error: #ff6b6b;
-  --error-dim: rgba(255, 107, 107, 0.1);
-  --warning: #ffa726;
-  --success: #66bb6a;
-  
-  --radius-sm: 6px;
-  --radius-md: 8px;
-  --radius-lg: 12px;
-  
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.5);
-  
-  --transition-fast: 0.15s ease;
-  --transition-normal: 0.2s ease;
-}
+/* =============================================================================
+   Global styles for Cryptainer
+   Imports theme tokens, then defines base resets, layout, and utilities.
+   ============================================================================= */
 
-/* Global Reset */
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+
+@import './themes/prism.css';
+@import './themes/cipher.css';
+
+/* =============================================================================
+   Reset
+   ============================================================================= */
 *, *::before, *::after {
   box-sizing: border-box;
   margin: 0;
@@ -44,26 +22,57 @@ html, body, #root {
   width: 100%;
 }
 
+html {
+  -webkit-text-size-adjust: 100%;
+  scroll-behavior: smooth;
+}
+
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: var(--font-sans);
+  font-size: 15px;
+  line-height: 1.5;
+  background: var(--bg-primary-grad, var(--bg-primary));
   background-color: var(--bg-primary);
   color: var(--text-primary);
-  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  transition:
+    background-color 600ms var(--ease-out),
+    color 600ms var(--ease-out);
 }
 
-/* Typography */
+#root {
+  display: flex;
+  flex-direction: column;
+}
+
+/* =============================================================================
+   Typography
+   ============================================================================= */
 h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-display);
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
 }
 
-code, pre {
-  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', monospace;
+code, pre, .mono, kbd, samp {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
 
-/* App Layout */
+a {
+  color: var(--accent);
+  text-decoration: none;
+  transition: color var(--transition-fast);
+}
+a:hover { color: var(--accent-hover); }
+
+/* =============================================================================
+   App Layout
+   ============================================================================= */
 .app {
   min-height: 100vh;
   display: flex;
@@ -80,7 +89,7 @@ code, pre {
 }
 
 .logo {
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 1.25rem;
   font-weight: 600;
   color: var(--accent);
@@ -93,7 +102,9 @@ code, pre {
   overflow-y: auto;
 }
 
-/* Scrollbar Styling */
+/* =============================================================================
+   Scrollbar
+   ============================================================================= */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -105,14 +116,37 @@ code, pre {
 
 ::-webkit-scrollbar-thumb {
   background: var(--border-color-hover);
-  border-radius: 4px;
+  border-radius: var(--radius-pill, 999px);
+  border: 2px solid var(--bg-secondary);
+  background-clip: content-box;
 }
 
 ::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
+  background-clip: content-box;
 }
 
-/* Interactive Elements */
+/* =============================================================================
+   Focus (visible for keyboard nav)
+   ============================================================================= */
+:focus { outline: none; }
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: var(--radius-sm);
+}
+
+/* =============================================================================
+   Selection
+   ============================================================================= */
+::selection {
+  background: var(--accent-dim);
+  color: var(--text-primary);
+}
+
+/* =============================================================================
+   Interactive Elements
+   ============================================================================= */
 button {
   cursor: pointer;
   border: none;
@@ -123,23 +157,23 @@ button {
   transition: all var(--transition-fast);
 }
 
-button:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
 }
 
-input, textarea {
+input, textarea, select {
   font-family: inherit;
   font-size: inherit;
-  background-color: var(--bg-tertiary);
+  color: var(--text-primary);
+  background-color: var(--bg-tertiary, var(--bg-elevated));
   border: 1px solid var(--border-color);
   border-radius: var(--radius-md);
   padding: 0.625rem 0.875rem;
-  color: var(--text-primary);
   transition: all var(--transition-fast);
 }
 
-input:focus, textarea:focus {
+input:focus, textarea:focus, select:focus {
   outline: none;
   border-color: var(--accent);
   box-shadow: 0 0 0 2px var(--accent-dim);
@@ -149,7 +183,20 @@ input::placeholder, textarea::placeholder {
   color: var(--text-muted);
 }
 
-/* Loading State */
+/* =============================================================================
+   Common surface utilities
+   ============================================================================= */
+.surface {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+}
+
+/* =============================================================================
+   Loading State
+   ============================================================================= */
 .loading {
   display: flex;
   align-items: center;
@@ -159,7 +206,9 @@ input::placeholder, textarea::placeholder {
   font-size: 1.125rem;
 }
 
-/* Empty State */
+/* =============================================================================
+   Empty State
+   ============================================================================= */
 .empty-state {
   text-align: center;
   padding: 4rem 2rem;
@@ -174,4 +223,126 @@ input::placeholder, textarea::placeholder {
 
 .empty-state p {
   margin-bottom: 0.5rem;
+}
+
+/* =============================================================================
+   Animation Keyframes
+   ============================================================================= */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideRight {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* =============================================================================
+   Staggered animation utilities
+   Each class adds a progressively longer animation-delay.
+   Use with any of the above keyframe animations, e.g.:
+     <div class="animate-fadeUp stagger-2">
+   ============================================================================= */
+.animate-fadeUp    { animation: fadeUp var(--transition-normal) var(--ease-out) both; }
+.animate-fadeIn    { animation: fadeIn var(--transition-normal) var(--ease-out) both; }
+.animate-slideRight { animation: slideRight var(--transition-normal) var(--ease-out) both; }
+.animate-scaleIn   { animation: scaleIn var(--transition-normal) var(--ease-out) both; }
+.animate-float     { animation: float 3s var(--ease-out) infinite; }
+.animate-pulse     { animation: pulse 2s var(--ease-out) infinite; }
+.animate-shimmer   {
+  animation: shimmer 2s linear infinite;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent-dim) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+.stagger-1  { animation-delay: 50ms; }
+.stagger-2  { animation-delay: 100ms; }
+.stagger-3  { animation-delay: 150ms; }
+.stagger-4  { animation-delay: 200ms; }
+.stagger-5  { animation-delay: 250ms; }
+.stagger-6  { animation-delay: 300ms; }
+.stagger-7  { animation-delay: 350ms; }
+.stagger-8  { animation-delay: 400ms; }
+
+/* =============================================================================
+   Reduced motion
+   ============================================================================= */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* =============================================================================
+   Theme transition (gentle global fade when toggling)
+   ============================================================================= */
+:root.theme-switching * {
+  transition: background-color 600ms var(--ease-out),
+              color 600ms var(--ease-out),
+              border-color 600ms var(--ease-out),
+              box-shadow 600ms var(--ease-out) !important;
 }

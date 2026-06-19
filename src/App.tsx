@@ -1,23 +1,54 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, useCallback, useRef } from 'react';
 import { useVaultStore } from './store/vaultStore';
 import { CreateWizard } from './components/Container/CreateWizard';
 import { ContainerModal } from './components/Container/ContainerModal';
 import { Settings } from './components/Settings';
 import { useAutoLock } from './hooks/useAutoLock';
+import { useMediaQuery } from './hooks/useMediaQuery';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { ContainerMeta } from './types/vault';
 import { formatBytes } from './utils/format';
 import './App.css';
 
 type SortOption = 'name' | 'date' | 'size' | 'files';
+type NavSection = 'containers' | 'settings';
 
 function App() {
   const { containers, loading, error, loadContainers, clearError, importContainer, exportContainer, deleteContainer } = useVaultStore();
   const [showCreate, setShowCreate] = useState(false);
   const [activeContainer, setActiveContainer] = useState<ContainerMeta | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [activeNav, setActiveNav] = useState<NavSection>('containers');
   const [showSettings, setShowSettings] = useState(false);
-  
+
+  // Responsive sidebar state
+  const { isMobile, isTablet } = useMediaQuery();
+  const isSmallScreen = isMobile || isTablet;
+  const [sidebarOpen, setSidebarOpen] = useState(false);
+  const sidebarRef = useRef<HTMLDivElement>(null);
+
+  // Close sidebar on escape key
+  useEffect(() => {
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && sidebarOpen) {
+        setSidebarOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleEsc);
+    return () => document.removeEventListener('keydown', handleEsc);
+  }, [sidebarOpen]);
+
+  // Focus trap: focus sidebar when opened
+  useEffect(() => {
+    if (sidebarOpen && sidebarRef.current) {
+      const firstFocusable = sidebarRef.current.querySelector('button');
+      if (firstFocusable) setTimeout(() => firstFocusable.focus(), 50);
+    }
+  }, [sidebarOpen]);
+
+  // Close sidebar on route change
+  const closeSidebar = useCallback(() => setSidebarOpen(false), []);
+
   // Search and filter states
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedTag, setSelectedTag] = useState<string | null>(null);
@@ -25,10 +56,7 @@ function App() {
 
   // Auto-lock hook
   const { isLocked: _isLocked } = useAutoLock(() => {
-    // Lock all containers on auto-lock
-    if (activeContainer) {
-      setActiveContainer(null);
-    }
+    if (activeContainer) setActiveContainer(null);
   });
 
   useEffect(() => {
@@ -39,9 +67,7 @@ function App() {
   const allTags = useMemo(() => {
     const tagSet = new Set<string>();
     containers.forEach(c => {
-      if (c.tags) {
-        c.tags.split(',').forEach(t => tagSet.add(t.trim()));
-      }
+      if (c.tags) c.tags.split(',').forEach(t => tagSet.add(t.trim()));
     });
     return Array.from(tagSet).sort();
   }, [containers]);
@@ -49,69 +75,62 @@ function App() {
   // Filter and sort containers
   const filteredContainers = useMemo(() => {
     let result = [...containers];
-    
+
     // Filter by search query
     if (searchQuery) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(c => 
-        c.name.toLowerCase().includes(query) ||
-        (c.tags && c.tags.toLowerCase().includes(query))
+      const q = searchQuery.toLowerCase();
+      result = result.filter(c =>
+        c.name.toLowerCase().includes(q) ||
+        (c.tags && c.tags.toLowerCase().includes(q))
       );
     }
-    
+
     // Filter by selected tag
     if (selectedTag) {
-      result = result.filter(c => 
+      result = result.filter(c =>
         c.tags && c.tags.split(',').some(t => t.trim() === selectedTag)
       );
     }
-    
+
     // Sort
     result.sort((a, b) => {
       switch (sortBy) {
-        case 'name':
-          return a.name.localeCompare(b.name);
-        case 'date':
-          return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
-        case 'size':
-          return b.total_size - a.total_size;
-        case 'files':
-          return b.file_count - a.file_count;
-        default:
-          return 0;
+        case 'name': return a.name.localeCompare(b.name);
+        case 'date': return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+        case 'size': return b.total_size - a.total_size;
+        case 'files': return b.file_count - a.file_count;
+        default: return 0;
       }
     });
-    
+
     return result;
   }, [containers, searchQuery, selectedTag, sortBy]);
+
+  // Stats derived from real data
+  const stats = useMemo(() => ({
+    total: containers.length,
+    files: containers.reduce((sum, c) => sum + c.file_count, 0),
+    size: containers.reduce((sum, c) => sum + c.total_size, 0),
+    algorithms: [...new Set(containers.map(c => c.algo))].join(', '),
+  }), [containers]);
 
   const handleImport = async () => {
     setIsImporting(true);
     try {
       const selected = await open({
         multiple: true,
-        filters: [{
-          name: 'Cryptainer Export',
-          extensions: ['ctnr']
-        }]
+        filters: [{ name: 'Cryptainer Export', extensions: ['ctnr'] }]
       });
-      
       if (selected && Array.isArray(selected)) {
-        let successCount = 0;
-        let failCount = 0;
+        let successCount = 0, failCount = 0;
         for (const path of selected) {
-          try {
-            await importContainer(path);
-            successCount++;
-          } catch {
-            failCount++;
-          }
+          try { await importContainer(path); successCount++; }
+          catch { failCount++; }
         }
         if (failCount > 0) {
-          const msg = failCount === selected.length
+          console.warn(failCount === selected.length
             ? `Import failed for all ${failCount} files`
-            : `Imported ${successCount} file(s), ${failCount} failed`;
-          console.warn(msg);
+            : `Imported ${successCount} file(s), ${failCount} failed`);
         }
       }
     } catch (e) {
@@ -125,172 +144,320 @@ function App() {
     e.stopPropagation();
     try {
       const path = await save({
-        filters: [{
-          name: 'Cryptainer Export',
-          extensions: ['ctnr']
-        }],
+        filters: [{ name: 'Cryptainer Export', extensions: ['ctnr'] }],
         defaultPath: `${container.name}.ctnr`
       });
-      if (path) {
-        await exportContainer(container.id, path);
-      }
-    } catch {
-      // Error handled by vaultStore
-    }
+      if (path) await exportContainer(container.id, path);
+    } catch { /* handled by vaultStore */ }
   };
 
   const handleDelete = async (container: ContainerMeta, e: React.MouseEvent) => {
     e.stopPropagation();
     if (confirm(`Delete "${container.name}"? This cannot be undone.`)) {
-      try {
-        await deleteContainer(container.id);
-      } catch {
-        // Error handled by vaultStore
-      }
+      try { await deleteContainer(container.id); }
+      catch { /* handled by vaultStore */ }
     }
   };
 
+  const handleCardKeyDown = (container: ContainerMeta, e: React.KeyboardEvent) => {
+    if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      setActiveContainer(container);
+    }
+  };
+
+  // Determine featured (largest) container
+  const featuredContainer = useMemo(() => {
+    if (filteredContainers.length === 0) return null;
+    return filteredContainers.reduce((a, b) => a.total_size > b.total_size ? a : b);
+  }, [filteredContainers]);
+
   return (
     <div className="app">
-      <header className="app-header">
-        <div className="logo">CRYPTAINER</div>
-        <div className="header-actions">
-          <button 
-            className="btn-ghost" 
-            onClick={() => setShowSettings(true)}
-            title="Settings"
+      {/* ============ MOBILE SIDEBAR OVERLAY ============ */}
+      {isSmallScreen && sidebarOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={closeSidebar}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ============ SIDEBAR ============ */}
+      <aside
+        ref={sidebarRef}
+        className={`sidebar ${isSmallScreen ? 'sidebar-mobile' : ''} ${sidebarOpen ? 'sidebar-open' : ''}`}
+        role="navigation"
+        aria-label="Main navigation"
+        aria-hidden={isSmallScreen && !sidebarOpen}
+      >
+        <div className="sidebar-logo">
+          <svg className="sidebar-logo-icon" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+            <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+          </svg>
+          <span className="sidebar-logo-text">Cryptainer</span>
+        </div>
+
+        <nav className="sidebar-nav">
+          <div className="sidebar-section-label">Navigation</div>
+          <button
+            className={`sidebar-nav-item ${activeNav === 'containers' ? 'active' : ''}`}
+            onClick={() => { setActiveNav('containers'); closeSidebar(); }}
           >
-            ⚙️
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 12h-4l-3 9-4-18-3 9H2" />
+            </svg>
+            <span>Containers</span>
+            <span className="sidebar-badge">{containers.length}</span>
           </button>
-          <button 
-            className="btn-secondary" 
-            onClick={handleImport}
+
+          <button
+            className="sidebar-nav-item"
+            onClick={() => { handleImport(); closeSidebar(); }}
             disabled={isImporting}
           >
-            {isImporting ? 'Importing...' : 'Import .ctnr'}
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>
+            <span>Import</span>
           </button>
-          <button className="btn-primary" onClick={() => setShowCreate(true)}>
-            + New Container
+
+          <button
+            className="sidebar-nav-item"
+            onClick={() => { setShowCreate(true); closeSidebar(); }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            <span>New Container</span>
+          </button>
+        </nav>
+
+        <div className="sidebar-divider" />
+
+        <div className="sidebar-nav">
+          <div className="sidebar-section-label">System</div>
+          <button
+            className="sidebar-nav-item"
+            onClick={() => { setShowSettings(true); closeSidebar(); }}
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="3" />
+              <path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42" />
+            </svg>
+            <span>Settings</span>
           </button>
         </div>
-      </header>
-      
-      <div className="vault-toolbar">
-        <div className="search-box">
-          <input
-            type="text"
-            placeholder="Search containers..."
-            value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
-            className="search-input"
-          />
-          {searchQuery && (
-            <button className="search-clear" onClick={() => setSearchQuery('')}>
-              ×
-            </button>
-          )}
+
+        <div className="sidebar-footer">
+          <div className="sidebar-status">
+            <span className="sidebar-status-dot" />
+            <span>{containers.length} container{containers.length !== 1 ? 's' : ''}</span>
+          </div>
         </div>
-        
-        <select 
-          className="sort-select"
-          value={sortBy}
-          onChange={(e) => setSortBy(e.target.value as SortOption)}
-        >
-          <option value="date">Sort by Date</option>
-          <option value="name">Sort by Name</option>
-          <option value="size">Sort by Size</option>
-          <option value="files">Sort by Files</option>
-        </select>
-      </div>
-      
-      {allTags.length > 0 && (
-        <div className="tag-filter">
-          <span className="tag-label">Filter by tag:</span>
-          <div className="tag-list">
-            {selectedTag && (
-              <button 
-                className="tag-btn clear"
-                onClick={() => setSelectedTag(null)}
-              >
-                Clear
-              </button>
-            )}
-            {allTags.map(tag => (
+      </aside>
+
+      {/* ============ MAIN CONTENT ============ */}
+      <div className="main-content">
+        {/* Topbar */}
+        <div className="topbar">
+          <div className="topbar-left">
+            {isSmallScreen && (
               <button
-                key={tag}
-                className={`tag-btn ${selectedTag === tag ? 'active' : ''}`}
-                onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                className="topbar-hamburger"
+                onClick={() => setSidebarOpen(!sidebarOpen)}
+                aria-label={sidebarOpen ? 'Close navigation menu' : 'Open navigation menu'}
+                aria-expanded={sidebarOpen}
               >
-                {tag}
-              </button>
-            ))}
-          </div>
-        </div>
-      )}
-      
-      <main className="app-main">
-        {loading ? (
-          <div className="loading">Loading vault…</div>
-        ) : containers.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">🔐</div>
-            <h2>Your vault is empty</h2>
-            <p>Create your first encrypted container to get started.</p>
-            <button className="btn-primary" onClick={() => setShowCreate(true)}>
-              Create Container
-            </button>
-          </div>
-        ) : filteredContainers.length === 0 ? (
-          <div className="empty-state">
-            <div className="empty-icon">🔍</div>
-            <h2>No containers found</h2>
-            <p>Try adjusting your search or filters.</p>
-            {(searchQuery || selectedTag) && (
-              <button 
-                className="btn-secondary" 
-                onClick={() => { setSearchQuery(''); setSelectedTag(null); }}
-              >
-                Clear filters
+                {sidebarOpen ? (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                ) : (
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="3" y1="12" x2="21" y2="12" />
+                    <line x1="3" y1="6" x2="21" y2="6" />
+                    <line x1="3" y1="18" x2="21" y2="18" />
+                  </svg>
+                )}
               </button>
             )}
+            <h1 className="topbar-title">Containers</h1>
           </div>
-        ) : (
-          <div className="vault-grid">
-            {filteredContainers.map(container => (
-              <div 
-                key={container.id} 
-                className="container-card"
-                onClick={() => setActiveContainer(container)}
-              >
-                <div className="card-header">
-                  <span className="algo-badge">{container.algo}</span>
-                  <div className="card-actions">
-                    <button 
-                      className="card-action-btn"
-                      onClick={(e) => handleExport(container, e)}
-                      title="Export"
-                    >
-                      ↓
-                    </button>
-                    <button 
-                      className="card-action-btn delete"
-                      onClick={(e) => handleDelete(container, e)}
-                      title="Delete"
-                    >
-                      ×
-                    </button>
+          <div className="topbar-right">
+            <div className="topbar-search">
+              <svg className="topbar-search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              <input
+                type="text"
+                placeholder="Search containers..."
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                className="topbar-search-input"
+              />
+              {searchQuery && (
+                <button className="topbar-search-clear" onClick={() => setSearchQuery('')}>×</button>
+              )}
+            </div>
+            <button className="btn-primary topbar-btn" onClick={() => setShowCreate(true)}>
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19" /><line x1="5" y1="12" x2="19" y2="12" />
+              </svg>
+              New
+            </button>
+          </div>
+        </div>
+
+        {/* Stats Row */}
+        <div className="stats-row">
+          <div className="stat-card">
+            <span className="stat-value">{stats.total}</span>
+            <span className="stat-label">Containers</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{stats.files.toLocaleString()}</span>
+            <span className="stat-label">Files</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{formatBytes(stats.size)}</span>
+            <span className="stat-label">Total Size</span>
+          </div>
+          <div className="stat-card">
+            <span className="stat-value">{stats.algorithms || '—'}</span>
+            <span className="stat-label">Algorithm</span>
+          </div>
+        </div>
+
+        {/* Toolbar */}
+        <div className="toolbar-row">
+          {allTags.length > 0 && (
+            <div className="toolbar-tags">
+              <span className="toolbar-tag-label">Tags:</span>
+              {selectedTag && (
+                <button className="tag-chip tag-chip-clear" onClick={() => setSelectedTag(null)}>
+                  Clear ×
+                </button>
+              )}
+              {allTags.map(tag => (
+                <button
+                  key={tag}
+                  className={`tag-chip ${selectedTag === tag ? 'active' : ''}`}
+                  onClick={() => setSelectedTag(selectedTag === tag ? null : tag)}
+                >
+                  {tag}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="toolbar-sort">
+            <label htmlFor="sort-select" className="toolbar-sort-label">Sort:</label>
+            <select
+              id="sort-select"
+              className="toolbar-sort-select"
+              value={sortBy}
+              onChange={e => setSortBy(e.target.value as SortOption)}
+            >
+              <option value="date">Date</option>
+              <option value="name">Name</option>
+              <option value="size">Size</option>
+              <option value="files">Files</option>
+            </select>
+          </div>
+        </div>
+
+        {/* Main Content */}
+        <main className="bento-main">
+          {loading ? (
+            <div className="loading">Loading vault…</div>
+          ) : containers.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">🔐</div>
+              <h2>Your vault is empty</h2>
+              <p>Create your first encrypted container to get started.</p>
+              <button className="btn-primary" onClick={() => setShowCreate(true)}>
+                Create Container
+              </button>
+            </div>
+          ) : filteredContainers.length === 0 ? (
+            <div className="empty-state">
+              <div className="empty-icon">🔍</div>
+              <h2>No containers found</h2>
+              <p>Try adjusting your search or filters.</p>
+              {(searchQuery || selectedTag) && (
+                <button className="btn-secondary" onClick={() => { setSearchQuery(''); setSelectedTag(null); }}>
+                  Clear filters
+                </button>
+              )}
+            </div>
+          ) : (
+            <div className="bento-grid">
+              {filteredContainers.map((container, index) => {
+                const isFeatured = featuredContainer && container.id === featuredContainer.id;
+                const staggerIndex = Math.min(index + 1, 8);
+                return (
+                  <div
+                    key={container.id}
+                    className={`bento-card ${isFeatured ? 'bento-featured' : ''} animate-scaleIn stagger-${staggerIndex}`}
+                    onClick={() => setActiveContainer(container)}
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={e => handleCardKeyDown(container, e)}
+                    aria-label={`Container ${container.name}`}
+                  >
+                    <div className="bento-card-top">
+                      <span className="algo-badge">{container.algo}</span>
+                      <div className="bento-card-actions">
+                        <button className="bento-action-btn" onClick={e => handleExport(container, e)} title="Export" aria-label="Export">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" />
+                          </svg>
+                        </button>
+                        <button className="bento-action-btn bento-action-delete" onClick={e => handleDelete(container, e)} title="Delete" aria-label="Delete">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <h3 className="bento-card-title">{container.name}</h3>
+                    <div className="bento-card-stats">
+                      <div className="bento-card-stat">
+                        <span className="bento-card-stat-value">{container.file_count}</span>
+                        <span className="bento-card-stat-label">files</span>
+                      </div>
+                      <div className="bento-card-stat">
+                        <span className="bento-card-stat-value">{formatBytes(container.total_size)}</span>
+                        <span className="bento-card-stat-label">size</span>
+                      </div>
+                      <div className="bento-card-stat">
+                        <span className="bento-card-stat-value">{new Date(container.created_at).toLocaleDateString()}</span>
+                        <span className="bento-card-stat-label">created</span>
+                      </div>
+                    </div>
+                    {container.tags && (
+                      <div className="bento-card-tags">
+                        {container.tags.split(',').map(t => t.trim()).filter(Boolean).map(tag => (
+                          <span key={tag} className="bento-card-tag">{tag}</span>
+                        ))}
+                      </div>
+                    )}
+                    <div className="bento-card-hash" title={container.blob_sha256}>
+                      {container.blob_sha256.substring(0, 16)}…
+                    </div>
                   </div>
-                </div>
-                <h3 className="card-title">{container.name}</h3>
-                <div className="card-meta">
-                  <span>{container.file_count} files · {formatBytes(container.total_size)}</span>
-                  <span>{new Date(container.created_at).toLocaleDateString()}</span>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </main>
+                );
+              })}
+            </div>
+          )}
+        </main>
+      </div>
 
       {error && (
         <div className="error-toast" onClick={clearError}>
@@ -299,20 +466,14 @@ function App() {
       )}
 
       {/* Modals */}
-      {showCreate && (
-        <CreateWizard onClose={() => setShowCreate(false)} />
-      )}
-      
+      {showCreate && <CreateWizard onClose={() => setShowCreate(false)} />}
       {activeContainer && (
         <ContainerModal
           container={activeContainer}
           onClose={() => setActiveContainer(null)}
         />
       )}
-      
-      {showSettings && (
-        <Settings onClose={() => setShowSettings(false)} />
-      )}
+      {showSettings && <Settings onClose={() => setShowSettings(false)} />}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 .hex-preview {
   background-color: var(--bg-tertiary);
   border-radius: var(--radius-md);
-  font-family: 'JetBrains Mono', monospace;
+  font-family: var(--font-mono);
   font-size: 0.8125rem;
   overflow: auto;
   max-height: 70vh;
@@ -30,7 +30,7 @@
 }
 
 .hex-row:hover {
-  background-color: rgba(255, 255, 255, 0.05);
+  background-color: var(--bg-hover);
 }
 
 .hex-offset {
