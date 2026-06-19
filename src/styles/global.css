@@ -226,6 +226,106 @@ input::placeholder, textarea::placeholder {
 }
 
 /* =============================================================================
+   Animation Keyframes
+   ============================================================================= */
+@keyframes fadeUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideRight {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scaleIn {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes float {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-6px);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.6;
+  }
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+/* =============================================================================
+   Staggered animation utilities
+   Each class adds a progressively longer animation-delay.
+   Use with any of the above keyframe animations, e.g.:
+     <div class="animate-fadeUp stagger-2">
+   ============================================================================= */
+.animate-fadeUp    { animation: fadeUp var(--transition-normal) var(--ease-out) both; }
+.animate-fadeIn    { animation: fadeIn var(--transition-normal) var(--ease-out) both; }
+.animate-slideRight { animation: slideRight var(--transition-normal) var(--ease-out) both; }
+.animate-scaleIn   { animation: scaleIn var(--transition-normal) var(--ease-out) both; }
+.animate-float     { animation: float 3s var(--ease-out) infinite; }
+.animate-pulse     { animation: pulse 2s var(--ease-out) infinite; }
+.animate-shimmer   {
+  animation: shimmer 2s linear infinite;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    var(--accent-dim) 50%,
+    transparent 100%
+  );
+  background-size: 200% 100%;
+}
+
+.stagger-1  { animation-delay: 50ms; }
+.stagger-2  { animation-delay: 100ms; }
+.stagger-3  { animation-delay: 150ms; }
+.stagger-4  { animation-delay: 200ms; }
+.stagger-5  { animation-delay: 250ms; }
+.stagger-6  { animation-delay: 300ms; }
+.stagger-7  { animation-delay: 350ms; }
+.stagger-8  { animation-delay: 400ms; }
+
+/* =============================================================================
    Reduced motion
    ============================================================================= */
 @media (prefers-reduced-motion: reduce) {
