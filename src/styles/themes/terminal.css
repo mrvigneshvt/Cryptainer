@@ -1,0 +1,199 @@
+/* =============================================================================
+   TERMINAL — Hacker theme (Retro Terminal)
+   True black bg, matrix green accent, 0px radius, scanlines, vignette,
+   glitch effects, monospace everything. The old cipher aesthetic reborn.
+   ============================================================================= */
+
+:root[data-theme="terminal"] {
+  /* Surface — true black */
+  --bg:                #000000;
+  --bg-primary:        #000000;
+  --bg-primary-grad:   #000000;
+  --bg-card:           #0a0a0a;
+  --bg-secondary:      #0a0a0a;
+  --bg-elevated:       #141414;
+  --bg-tertiary:       #141414;
+  --bg-hover:          #1a1a1a;
+  --bg-overlay:        rgba(0, 0, 0, 0.90);
+
+  /* Border — dark green tint */
+  --border:            #0d2b1a;
+  --border-color:      #0d2b1a;
+  --border-hover:      #1a4d2e;
+  --border-color-hover:#1a4d2e;
+  --border-strong:     #1a4d2e;
+
+  /* Text — matrix green spectrum */
+  --text:              #00ff41;
+  --text-primary:      #00ff41;
+  --text-secondary:    #00cc33;
+  --text-muted:        #008f22;
+
+  /* Accent — matrix green */
+  --accent:            #00ff41;
+  --accent-light:      #33ff66;
+  --accent-hover:      #33ff66;
+  --accent-dim:        rgba(0, 255, 65, 0.12);
+  --accent-glow:       rgba(0, 255, 65, 0.30);
+  --accent-on:         #000000;
+  --gradient-accent:   linear-gradient(135deg, #00ff41 0%, #33ff66 100%);
+
+  /* Status */
+  --success:           #00ff41;
+  --success-dim:       rgba(0, 255, 65, 0.14);
+  --error:             #ff0040;
+  --error-dim:         rgba(255, 0, 64, 0.14);
+
+  /* Shape — sharp edges */
+  --radius-sm:         0px;
+  --radius-md:         0px;
+  --radius-lg:         0px;
+  --radius-xl:         0px;
+  --radius-pill:       0px;
+
+  /* Shadow — neon glow */
+  --shadow-sm:         0 0 4px rgba(0, 255, 65, 0.15);
+  --shadow-md:         0 0 12px rgba(0, 255, 65, 0.20);
+  --shadow-lg:         0 0 24px rgba(0, 255, 65, 0.25);
+  --shadow-glow:       0 0 0 1px var(--accent-dim), 0 0 20px var(--accent-glow);
+
+  /* Motion */
+  --ease-out:          cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-in-out:       cubic-bezier(0.65, 0, 0.35, 1);
+  --transition-fast:   120ms var(--ease-out);
+  --transition-normal: 240ms var(--ease-out);
+  --transition-slow:   400ms var(--ease-out);
+
+  /* Typography — all monospace */
+  --font-sans:         "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  --font-display:      "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  --font-mono:         "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+
+  /* Layout */
+  --container-max:     1200px;
+  --navbar-float:      16px;
+  --grid-gap:          20px;
+
+  /* Glass blur */
+  --glass-blur:        blur(8px) saturate(120%);
+  --glass-blur-strong: blur(16px) saturate(140%);
+
+  /* Theme metadata */
+  --theme-id:          "terminal";
+  --theme-noise-opacity: 0;
+  --theme-scan-opacity:  0.04;
+}
+
+/* TERMINAL-specific body background */
+:root[data-theme="terminal"] body {
+  background-color: #000000;
+  position: relative;
+}
+
+/* Scanlines overlay */
+:root[data-theme="terminal"] body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 1px,
+    rgba(0, 255, 65, 0.03) 1px,
+    rgba(0, 255, 65, 0.03) 2px
+  );
+  pointer-events: none;
+  z-index: 9999;
+  animation: scanlines 8s linear infinite;
+}
+
+/* Vignette overlay */
+:root[data-theme="terminal"] body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  background: radial-gradient(
+    ellipse at center,
+    transparent 60%,
+    rgba(0, 0, 0, 0.4) 100%
+  );
+  pointer-events: none;
+  z-index: 9998;
+}
+
+/* Scanline animation */
+@keyframes scanlines {
+  0% { background-position: 0 0; }
+  100% { background-position: 0 100px; }
+}
+
+/* Glitch text utility */
+.glitch {
+  position: relative;
+  animation: glitch-skew 4s infinite linear alternate-reverse;
+}
+
+.glitch::before,
+.glitch::after {
+  content: attr(data-text);
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.glitch::before {
+  animation: glitch-effect 3s infinite linear alternate-reverse;
+  clip-path: polygon(0 0, 100% 0, 100% 35%, 0 35%);
+  transform: translate(-2px, -1px);
+  opacity: 0.8;
+}
+
+.glitch::after {
+  animation: glitch-effect 2s infinite linear alternate-reverse;
+  clip-path: polygon(0 65%, 100% 65%, 100% 100%, 0 100%);
+  transform: translate(2px, 1px);
+  opacity: 0.8;
+}
+
+@keyframes glitch-effect {
+  0% { transform: translate(0); }
+  20% { transform: translate(-2px, 2px); }
+  40% { transform: translate(-2px, -2px); }
+  60% { transform: translate(2px, 2px); }
+  80% { transform: translate(2px, -2px); }
+  100% { transform: translate(0); }
+}
+
+@keyframes glitch-skew {
+  0% { transform: skew(0deg); }
+  20% { transform: skew(0deg); }
+  21% { transform: skew(0.5deg); }
+  22% { transform: skew(0deg); }
+  100% { transform: skew(0deg); }
+}
+
+/* Blinking caret utility */
+.caret-blink {
+  border-right: 2px solid var(--accent);
+  animation: blink 1s step-end infinite;
+}
+
+@keyframes blink {
+  0%, 100% { border-color: var(--accent); }
+  50% { border-color: transparent; }
+}
+
+/* CRT flicker on hover */
+:root[data-theme="terminal"] .bento-card:hover {
+  animation: crt-flicker 0.15s linear;
+}
+
+@keyframes crt-flicker {
+  0% { opacity: 1; }
+  25% { opacity: 0.95; }
+  50% { opacity: 1; }
+  75% { opacity: 0.97; }
+  100% { opacity: 1; }
+}

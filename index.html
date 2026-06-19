@@ -7,6 +7,18 @@
     <title>Cryptainer</title>
   </head>
   <body>
+    <script>
+      // FOUC prevention: apply theme before paint
+      (function() {
+        try {
+          var theme = localStorage.getItem('cryptainer.theme') || 'prism';
+          if (theme === 'prism' || theme === 'cipher' || theme === 'terminal') {
+            document.documentElement.setAttribute('data-theme', theme);
+            document.documentElement.style.colorScheme = (theme === 'cipher' || theme === 'terminal') ? 'dark' : 'light';
+          }
+        } catch(e) {}
+      })();
+    </script>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

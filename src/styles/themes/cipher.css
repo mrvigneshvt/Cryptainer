@@ -88,3 +88,17 @@
 :root[data-theme="cipher"] body {
   background-color: #09090b;
 }
+
+/* Subtle emerald glow at top center */
+:root[data-theme="cipher"] body::before {
+  content: '';
+  position: fixed;
+  top: 0;
+  left: 50%;
+  width: 600px;
+  height: 600px;
+  background: radial-gradient(circle, rgba(16, 185, 129, 0.08) 0%, transparent 70%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  z-index: 0;
+}

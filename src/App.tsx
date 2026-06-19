@@ -3,6 +3,7 @@ import { useVaultStore } from './store/vaultStore';
 import { CreateWizard } from './components/Container/CreateWizard';
 import { ContainerModal } from './components/Container/ContainerModal';
 import { Settings } from './components/Settings';
+import { ThemeToggle } from './components/UI/ThemeToggle';
 import { useAutoLock } from './hooks/useAutoLock';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { open, save } from '@tauri-apps/plugin-dialog';
@@ -254,6 +255,7 @@ function App() {
         </div>
 
         <div className="sidebar-footer">
+          <ThemeToggle />
           <div className="sidebar-status">
             <span className="sidebar-status-dot" />
             <span>{containers.length} container{containers.length !== 1 ? 's' : ''}</span>
@@ -378,7 +380,12 @@ function App() {
             <div className="loading">Loading vault…</div>
           ) : containers.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">🔐</div>
+              <div className="empty-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+                  <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+                </svg>
+              </div>
               <h2>Your vault is empty</h2>
               <p>Create your first encrypted container to get started.</p>
               <button className="btn-primary" onClick={() => setShowCreate(true)}>
@@ -387,7 +394,12 @@ function App() {
             </div>
           ) : filteredContainers.length === 0 ? (
             <div className="empty-state">
-              <div className="empty-icon">🔍</div>
+              <div className="empty-icon">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="11" cy="11" r="8" />
+                  <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                </svg>
+              </div>
               <h2>No containers found</h2>
               <p>Try adjusting your search or filters.</p>
               {(searchQuery || selectedTag) && (
