@@ -17,7 +17,7 @@ use crate::{
     crypto::{self, KdfParams},
     storage,
     vault::{ContainerMeta, ContainerPayload, VaultFile, ContainerMetadataV2, FileMetadata},
-    session::{Session, SessionStore, SessionStoreV2, SessionV2},
+    session::{SessionStore, SessionStoreV2, SessionV2},
     export,
     error::CryptoError,
     crypto::SALT_LEN,
@@ -196,7 +196,7 @@ pub async fn unlock_container(
     container_id: String,
     password: String,
     pool: State<'_, sqlx::SqlitePool>,
-    sessions: State<'_, SessionStore>,
+    _sessions: State<'_, SessionStore>,
     sessions_v2: State<'_, SessionStoreV2>,
 ) -> std::result::Result<Vec<serde_json::Value>, CryptoError> {
     validate_password(&password)?;
