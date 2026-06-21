@@ -1,11 +1,13 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
 import type { ContainerMeta, VaultFileMeta, CreateContainerInput, FileInput } from '../types/vault';
+import { isTauri, MOCK_CONTAINERS } from '../utils/tauri';
 
 interface VaultState {
   containers:   ContainerMeta[];
   loading:      boolean;
   error:        string | null;
+  isMock:       boolean;
   // Actions
   loadContainers:    () => Promise<void>;
   createContainer:   (input: CreateContainerInput) => Promise<ContainerMeta>;
@@ -24,10 +26,17 @@ export const useVaultStore = create<VaultState>((set) => ({
   containers: [],
   loading:    false,
   error:      null,
+  isMock:     !isTauri(),
 
   loadContainers: async () => {
     set({ loading: true, error: null });
     try {
+      if (!isTauri()) {
+        // Browser dev mode — serve mock data after a brief delay so loading state is visible
+        await new Promise(r => setTimeout(r, 400));
+        set({ containers: MOCK_CONTAINERS as ContainerMeta[], loading: false });
+        return;
+      }
       const containers = await invoke<ContainerMeta[]>('list_containers');
       set({ containers, loading: false });
     } catch (e) {
@@ -38,6 +47,25 @@ export const useVaultStore = create<VaultState>((set) => ({
   createContainer: async (input) => {
     set({ loading: true, error: null });
     try {
+      if (!isTauri()) {
+        await new Promise(r => setTimeout(r, 400));
+        const now = new Date().toISOString();
+        const meta: ContainerMeta = {
+          id: 'mock-' + Date.now(),
+          name: input.name,
+          algo: 'AES-GCM-256',
+          kdf_params: input.kdf_params,
+          file_count: input.files?.length ?? 0,
+          total_size: input.files?.reduce((s, f) => s + f.data.length, 0) ?? 0,
+          blob_path: '/mock/' + input.name + '.ctnr',
+          blob_sha256: 'mock-sha256-' + Date.now(),
+          created_at: now,
+          modified_at: now,
+          tags: input.tags ?? '',
+        };
+        set(s => ({ containers: [meta, ...s.containers], loading: false }));
+        return meta;
+      }
       const meta = await invoke<ContainerMeta>('create_container', { input });
       set(s => ({ containers: [meta, ...s.containers], loading: false }));
       return meta;
@@ -49,6 +77,10 @@ export const useVaultStore = create<VaultState>((set) => ({
 
   deleteContainer: async (id) => {
     try {
+      if (!isTauri()) {
+        set(s => ({ containers: s.containers.filter(c => c.id !== id) }));
+        return;
+      }
       await invoke('delete_container', { containerId: id });
       set(s => ({ containers: s.containers.filter(c => c.id !== id) }));
     } catch (e) {
@@ -59,6 +91,9 @@ export const useVaultStore = create<VaultState>((set) => ({
 
   unlockContainer: async (id, password) => {
     try {
+      if (!isTauri()) {
+        return [];
+      }
       return await invoke<VaultFileMeta[]>('unlock_container', { containerId: id, password });
     } catch (e) {
       set({ error: String(e) });
@@ -67,20 +102,24 @@ export const useVaultStore = create<VaultState>((set) => ({
   },
 
   lockContainer: async (id) => {
+    if (!isTauri()) return;
     await invoke('lock_container', { containerId: id });
   },
 
   getFileData: async (containerId, fileId) => {
+    if (!isTauri()) return new Uint8Array(0);
     const bytes = await invoke<number[]>('get_file_data', { containerId, fileId });
     return new Uint8Array(bytes);
   },
 
   releaseFileData: async (containerId, fileId) => {
+    if (!isTauri()) return;
     await invoke('release_file_data', { containerId, fileId });
   },
 
   exportContainer: async (id, destPath) => {
     try {
+      if (!isTauri()) return;
       await invoke('export_container', { containerId: id, destPath });
     } catch (e) {
       set({ error: String(e) });
@@ -90,6 +129,11 @@ export const useVaultStore = create<VaultState>((set) => ({
 
   importContainer: async (srcPath) => {
     try {
+      if (!isTauri()) {
+        const meta = MOCK_CONTAINERS[0] as ContainerMeta;
+        set(s => ({ containers: [meta, ...s.containers] }));
+        return meta;
+      }
       const meta = await invoke<ContainerMeta>('import_container', { srcPath });
       set(s => ({ containers: [meta, ...s.containers] }));
       return meta;
@@ -101,6 +145,9 @@ export const useVaultStore = create<VaultState>((set) => ({
 
   saveContainerEdits: async (containerId, password, filesToAdd, fileIdsToRemove) => {
     try {
+      if (!isTauri()) {
+        return MOCK_CONTAINERS[0] as ContainerMeta;
+      }
       const updated = await invoke<ContainerMeta>('save_edits', {
         containerId,
         password,

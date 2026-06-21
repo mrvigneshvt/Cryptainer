@@ -1,61 +1,67 @@
 /* =============================================================================
-   TERMINAL — Hacker theme (Retro Terminal)
-   True black bg, matrix green accent, 0px radius, scanlines, vignette,
-   glitch effects, monospace everything. The old cipher aesthetic reborn.
+   TERMINAL — "PHOSPHOR // SECURE.SHELL"
+   A premium phosphor-CRT security-terminal aesthetic. Layered void depth:
+   blueprint grid + radial bloom + a slow scan-beam + micro-scanlines + grain.
+   Refined emerald-phosphor palette, HUD corner-bracket panels, squared-techno
+   display type. Epic, professional, unmistakably hacker — without the cliché.
    ============================================================================= */
 
 :root[data-theme="terminal"] {
-  /* Surface — true black */
-  --bg:                #000000;
-  --bg-primary:        #000000;
-  --bg-primary-grad:   #000000;
-  --bg-card:           #0a0a0a;
-  --bg-secondary:      #0a0a0a;
-  --bg-elevated:       #141414;
-  --bg-tertiary:       #141414;
-  --bg-hover:          #1a1a1a;
-  --bg-overlay:        rgba(0, 0, 0, 0.90);
+  /* Surface — deep green-tinted void (not flat black; reads as depth) */
+  --bg:                #03070a;
+  --bg-primary:        #03070a;
+  --bg-primary-grad:   radial-gradient(120% 90% at 50% -10%, #07140e 0%, #04090c 45%, #020506 100%);
+  --bg-card:           #060d0c;
+  --bg-secondary:      #050b0a;
+  --bg-elevated:       #0b1714;
+  --bg-tertiary:       #091310;
+  --bg-hover:          #0e201b;
+  --bg-overlay:        rgba(2, 6, 5, 0.92);
 
-  /* Border — dark green tint */
-  --border:            #0d2b1a;
-  --border-color:      #0d2b1a;
-  --border-hover:      #1a4d2e;
-  --border-color-hover:#1a4d2e;
-  --border-strong:     #1a4d2e;
+  /* Border — phosphor-tinted hairlines */
+  --border:            #103527;
+  --border-color:      #103527;
+  --border-hover:      #1c5e42;
+  --border-color-hover:#1c5e42;
+  --border-strong:     #1c5e42;
 
-  /* Text — matrix green spectrum */
-  --text:              #00ff41;
-  --text-primary:      #00ff41;
-  --text-secondary:    #00cc33;
-  --text-muted:        #008f22;
+  /* Text — emerald-phosphor spectrum (readable body, bloom reserved for accents) */
+  --text:              #5cf2a6;
+  --text-primary:      #5cf2a6;
+  --text-secondary:    #38b87c;
+  --text-muted:        #2a7a55;
 
-  /* Accent — matrix green */
-  --accent:            #00ff41;
-  --accent-light:      #33ff66;
-  --accent-hover:      #33ff66;
-  --accent-dim:        rgba(0, 255, 65, 0.12);
-  --accent-glow:       rgba(0, 255, 65, 0.30);
-  --accent-on:         #000000;
-  --gradient-accent:   linear-gradient(135deg, #00ff41 0%, #33ff66 100%);
+  /* Accent — vivid emerald phosphor */
+  --accent:            #19ffa0;
+  --accent-light:      #6fffc4;
+  --accent-hover:      #6fffc4;
+  --accent-dim:        rgba(25, 255, 160, 0.10);
+  --accent-glow:       rgba(25, 255, 160, 0.34);
+  --accent-on:         #021109;
+  --gradient-accent:   linear-gradient(135deg, #19ffa0 0%, #6fffc4 100%);
+
+  /* Secondary signal — electric cyan, used ONLY for the scan-beam & deep accents */
+  --signal:            #2fe6ff;
+  --signal-glow:       rgba(47, 230, 255, 0.30);
 
   /* Status */
-  --success:           #00ff41;
-  --success-dim:       rgba(0, 255, 65, 0.14);
-  --error:             #ff0040;
-  --error-dim:         rgba(255, 0, 64, 0.14);
+  --success:           #19ffa0;
+  --success-dim:       rgba(25, 255, 160, 0.14);
+  --error:             #ff3b6b;
+  --error-dim:         rgba(255, 59, 107, 0.14);
 
-  /* Shape — sharp edges */
+  /* Shape — sharp terminal edges */
   --radius-sm:         0px;
   --radius-md:         0px;
   --radius-lg:         0px;
   --radius-xl:         0px;
   --radius-pill:       0px;
 
-  /* Shadow — neon glow */
-  --shadow-sm:         0 0 4px rgba(0, 255, 65, 0.15);
-  --shadow-md:         0 0 12px rgba(0, 255, 65, 0.20);
-  --shadow-lg:         0 0 24px rgba(0, 255, 65, 0.25);
-  --shadow-glow:       0 0 0 1px var(--accent-dim), 0 0 20px var(--accent-glow);
+  /* Shadow — phosphor bloom */
+  --shadow-sm:         0 0 0 1px rgba(16, 53, 39, 0.6), 0 2px 10px rgba(0, 0, 0, 0.5);
+  --shadow-md:         0 0 0 1px var(--accent-dim), 0 6px 24px rgba(0, 0, 0, 0.55), 0 0 18px rgba(25, 255, 160, 0.06);
+  --shadow-lg:         0 0 0 1px var(--accent-dim), 0 12px 40px rgba(0, 0, 0, 0.6), 0 0 28px var(--accent-glow);
+  --shadow-glow:       0 0 0 1px var(--accent), 0 0 24px var(--accent-glow), inset 0 0 24px rgba(25, 255, 160, 0.04);
 
   /* Motion */
   --ease-out:          cubic-bezier(0.22, 1, 0.36, 1);
@@ -64,10 +70,10 @@
   --transition-normal: 240ms var(--ease-out);
   --transition-slow:   400ms var(--ease-out);
 
-  /* Typography — all monospace */
-  --font-sans:         "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
-  --font-display:      "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
-  --font-mono:         "JetBrains Mono", "Fira Code", "Cascadia Code", ui-monospace, monospace;
+  /* Typography — squared-techno display + crisp mono body */
+  --font-sans:         "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
+  --font-display:      "Chakra Petch", "JetBrains Mono", ui-monospace, monospace;
+  --font-mono:         "JetBrains Mono", "Cascadia Code", ui-monospace, monospace;
 
   /* Layout */
   --container-max:     1200px;
@@ -75,125 +81,218 @@
   --grid-gap:          20px;
 
   /* Glass blur */
-  --glass-blur:        blur(8px) saturate(120%);
-  --glass-blur-strong: blur(16px) saturate(140%);
+  --glass-blur:        blur(8px) saturate(130%);
+  --glass-blur-strong: blur(16px) saturate(150%);
 
   /* Theme metadata */
   --theme-id:          "terminal";
   --theme-noise-opacity: 0;
   --theme-scan-opacity:  0.04;
+
+  color-scheme: dark;
 }
 
-/* TERMINAL-specific body background */
+/* =============================================================================
+   AMBIENT DEPTH STACK
+   Layer 0: void + radial bloom + blueprint grid          → body background
+   Layer 1: micro-scanlines (drifting)                    → body::before
+   Layer 2: vignette + film grain                         → body::after
+   Layer 3: slow cyan scan-beam sweep                     → :root::before
+   ============================================================================= */
 :root[data-theme="terminal"] body {
-  background-color: #000000;
+  background-color: #03070a;
+  background-image:
+    radial-gradient(120% 80% at 50% -15%, rgba(25, 255, 160, 0.08), transparent 55%),
+    linear-gradient(rgba(25, 255, 160, 0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(25, 255, 160, 0.035) 1px, transparent 1px);
+  background-size: 100% 100%, 44px 44px, 44px 44px;
+  background-position: center top, center center, center center;
   position: relative;
 }
 
-/* Scanlines overlay */
+/* Layer 1 — fine drifting scanlines */
 :root[data-theme="terminal"] body::before {
   content: '';
   position: fixed;
   inset: 0;
   background: repeating-linear-gradient(
     0deg,
-    transparent,
-    transparent 1px,
-    rgba(0, 255, 65, 0.03) 1px,
-    rgba(0, 255, 65, 0.03) 2px
+    transparent 0,
+    transparent 2px,
+    rgba(0, 0, 0, 0.28) 3px,
+    transparent 4px
   );
+  background-size: 100% 4px;
   pointer-events: none;
   z-index: 9999;
-  animation: scanlines 8s linear infinite;
+  opacity: 0.55;
+  animation: tm-scanlines 12s linear infinite;
 }
 
-/* Vignette overlay */
+/* Layer 2 — vignette + subtle grain */
 :root[data-theme="terminal"] body::after {
   content: '';
   position: fixed;
   inset: 0;
-  background: radial-gradient(
-    ellipse at center,
-    transparent 60%,
-    rgba(0, 0, 0, 0.4) 100%
-  );
+  background:
+    radial-gradient(ellipse at center, transparent 52%, rgba(0, 0, 0, 0.55) 100%),
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: cover, 160px 160px;
   pointer-events: none;
   z-index: 9998;
+  opacity: 0.9;
+  mix-blend-mode: normal;
 }
 
-/* Scanline animation */
-@keyframes scanlines {
-  0% { background-position: 0 0; }
-  100% { background-position: 0 100px; }
-}
-
-/* Glitch text utility */
-.glitch {
-  position: relative;
-  animation: glitch-skew 4s infinite linear alternate-reverse;
-}
-
-.glitch::before,
-.glitch::after {
-  content: attr(data-text);
-  position: absolute;
-  top: 0;
+/* Layer 3 — slow cyan scan-beam sweeping top→bottom */
+:root[data-theme="terminal"]::before {
+  content: '';
+  position: fixed;
   left: 0;
-  width: 100%;
-  height: 100%;
+  right: 0;
+  top: 0;
+  height: 35vh;
+  background: linear-gradient(
+    to bottom,
+    transparent 0%,
+    var(--signal-glow) 70%,
+    rgba(47, 230, 255, 0.55) 92%,
+    transparent 100%
+  );
+  opacity: 0.05;
+  pointer-events: none;
+  z-index: 9997;
+  mix-blend-mode: screen;
+  animation: tm-beam 7s var(--ease-in-out) infinite;
 }
 
-.glitch::before {
-  animation: glitch-effect 3s infinite linear alternate-reverse;
-  clip-path: polygon(0 0, 100% 0, 100% 35%, 0 35%);
-  transform: translate(-2px, -1px);
-  opacity: 0.8;
+@keyframes tm-scanlines {
+  0%   { background-position: 0 0; }
+  100% { background-position: 0 80px; }
 }
 
-.glitch::after {
-  animation: glitch-effect 2s infinite linear alternate-reverse;
-  clip-path: polygon(0 65%, 100% 65%, 100% 100%, 0 100%);
-  transform: translate(2px, 1px);
-  opacity: 0.8;
+@keyframes tm-beam {
+  0%   { transform: translateY(-40vh); opacity: 0; }
+  15%  { opacity: 0.06; }
+  85%  { opacity: 0.06; }
+  100% { transform: translateY(135vh); opacity: 0; }
 }
 
-@keyframes glitch-effect {
-  0% { transform: translate(0); }
-  20% { transform: translate(-2px, 2px); }
-  40% { transform: translate(-2px, -2px); }
-  60% { transform: translate(2px, 2px); }
-  80% { transform: translate(2px, -2px); }
-  100% { transform: translate(0); }
+/* Honour reduced-motion preferences — kill the ambient animations */
+@media (prefers-reduced-motion: reduce) {
+  :root[data-theme="terminal"] body::before,
+  :root[data-theme="terminal"]::before {
+    animation: none;
+  }
+  :root[data-theme="terminal"]::before { display: none; }
 }
 
-@keyframes glitch-skew {
-  0% { transform: skew(0deg); }
-  20% { transform: skew(0deg); }
-  21% { transform: skew(0.5deg); }
-  22% { transform: skew(0deg); }
-  100% { transform: skew(0deg); }
+/* =============================================================================
+   PHOSPHOR TYPOGRAPHY — squared-techno display headers with bloom
+   ============================================================================= */
+:root[data-theme="terminal"] h1,
+:root[data-theme="terminal"] h2,
+:root[data-theme="terminal"] h3,
+:root[data-theme="terminal"] .topbar-title,
+:root[data-theme="terminal"] .sidebar-logo-text,
+:root[data-theme="terminal"] .bento-card-title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: uppercase;
+  text-shadow: 0 0 14px rgba(25, 255, 160, 0.30);
 }
 
-/* Blinking caret utility */
+:root[data-theme="terminal"] .topbar-title { letter-spacing: 0.04em; }
+
+/* Brand wordmark gets a command-prompt marker + breathing cursor */
+:root[data-theme="terminal"] .sidebar-logo-text::before {
+  content: "> ";
+  color: var(--accent);
+}
+:root[data-theme="terminal"] .sidebar-logo-text::after {
+  content: "_";
+  color: var(--accent);
+  animation: tm-blink 1.1s step-end infinite;
+}
+
+@keyframes tm-blink {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0; }
+}
+
+/* Code-style section labels:  // NAVIGATION */
+:root[data-theme="terminal"] .sidebar-section-label::before {
+  content: "// ";
+  color: var(--accent);
+  opacity: 0.7;
+}
+
+/* =============================================================================
+   AMBIENT SHOW-THROUGH — make layout surfaces transparent so the void grid,
+   scan-beam and scanlines read behind the hybrid shell.
+   ============================================================================= */
+:root[data-theme="terminal"] .app,
+:root[data-theme="terminal"] .main-content,
+:root[data-theme="terminal"] .bento-main {
+  background: transparent;
+}
+
+/* =============================================================================
+   ACTIVE NAV — left bracket marker + bloom
+   ============================================================================= */
+:root[data-theme="terminal"] .sidebar-nav-item {
+  position: relative;
+  border-left: 2px solid transparent;
+}
+
+:root[data-theme="terminal"] .sidebar-nav-item.active {
+  background-color: var(--accent-dim);
+  border-left-color: var(--accent);
+  color: var(--accent);
+  text-shadow: 0 0 10px rgba(25, 255, 160, 0.35);
+}
+
+:root[data-theme="terminal"] .sidebar-nav-item.active::before {
+  content: "›";
+  position: absolute;
+  right: 0.5rem;
+  color: var(--accent);
+}
+
+/* Status dot pulses like a live link indicator */
+:root[data-theme="terminal"] .sidebar-status-dot {
+  box-shadow: 0 0 8px var(--accent);
+  animation: tm-pulse 2.4s var(--ease-in-out) infinite;
+}
+
+@keyframes tm-pulse {
+  0%, 100% { opacity: 1;   box-shadow: 0 0 8px var(--accent); }
+  50%      { opacity: 0.5; box-shadow: 0 0 2px var(--accent); }
+}
+
+/* Primary buttons emit phosphor */
+:root[data-theme="terminal"] .btn-primary {
+  box-shadow: 0 0 0 1px var(--accent), 0 0 18px var(--accent-glow);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+:root[data-theme="terminal"] .btn-primary:hover:not(:disabled) {
+  box-shadow: 0 0 0 1px var(--accent-light), 0 0 26px var(--accent-glow);
+}
+
+/* Focus rings read as cyan signal locks */
+:root[data-theme="terminal"] .topbar-search-input:focus,
+:root[data-theme="terminal"] .toolbar-sort-select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent), 0 0 14px var(--accent-glow);
+}
+
+/* =============================================================================
+   UTILITIES (kept, refined) — opt-in caret for terminal flavour
+   ============================================================================= */
 .caret-blink {
   border-right: 2px solid var(--accent);
-  animation: blink 1s step-end infinite;
-}
-
-@keyframes blink {
-  0%, 100% { border-color: var(--accent); }
-  50% { border-color: transparent; }
-}
-
-/* CRT flicker on hover */
-:root[data-theme="terminal"] .bento-card:hover {
-  animation: crt-flicker 0.15s linear;
-}
-
-@keyframes crt-flicker {
-  0% { opacity: 1; }
-  25% { opacity: 0.95; }
-  50% { opacity: 1; }
-  75% { opacity: 0.97; }
-  100% { opacity: 1; }
+  animation: tm-blink 1.1s step-end infinite;
 }

@@ -3,7 +3,7 @@
    Imports theme tokens, then defines base resets, layout, and utilities.
    ============================================================================= */
 
-@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&family=Chakra+Petch:wght@500;600;700&display=swap');
 
 @import './themes/prism.css';
 @import './themes/cipher.css';
@@ -73,13 +73,9 @@ a:hover { color: var(--accent-hover); }
 
 /* =============================================================================
    App Layout
+   Note: `.app` layout (grid columns, height) is owned by App.css. Do not define
+   display/flex-direction here — global.css loads after App.css and would override it.
    ============================================================================= */
-.app {
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-}
-
 .app-header {
   background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);

@@ -55,3 +55,6 @@ Thumbs.db
 
 # Playwright MCP screenshots
 .playwright-mcp/
+
+# UI dev/verification screenshots
+ui-*.png
