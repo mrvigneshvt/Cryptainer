@@ -784,6 +784,18 @@ fn atomic_write_blob(path: &str, data: &[u8]) -> std::result::Result<(), CryptoE
     Ok(())
 }
 
+/// Return the platform-appropriate download directory.
+/// On mobile (Android/iOS) this is the public Downloads folder;
+/// on desktop it is the user's download dir. Creates the directory if needed.
+#[tauri::command]
+pub async fn get_download_dir(app: tauri::AppHandle) -> std::result::Result<String, CryptoError> {
+    let dir = app.path().download_dir()
+        .map_err(|e| CryptoError::Io(std::io::Error::other(e.to_string())))?;
+    std::fs::create_dir_all(&dir)?;
+    let path = dir.to_string_lossy().into_owned();
+    Ok(path)
+}
+
 /// List all containers (metadata only — no blobs, no keys).
 #[tauri::command]
 pub async fn list_containers(

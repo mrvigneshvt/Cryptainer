@@ -57,6 +57,7 @@ pub fn run() {
             commands::export_container,
             commands::import_container,
             commands::download_files,
+            commands::get_download_dir,
             commands::list_audit_events,
         ])
         .run(tauri::generate_context!())
