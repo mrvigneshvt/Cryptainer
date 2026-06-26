@@ -9,7 +9,7 @@ use chrono::Utc;
 use std::path::PathBuf;
 
 use crate::error::{CryptoError, Result};
-use crate::vault::ContainerMeta;
+use crate::vault::{ContainerMeta, AuditEvent};
 
 /// Initialize SQLite connection pool and run migrations.
 pub async fn init_db(app_data_dir: &PathBuf) -> Result<SqlitePool> {
@@ -183,6 +183,50 @@ pub async fn get_container(pool: &SqlitePool, id: &str) -> Result<ContainerMeta>
     })
 }
 
+/// Insert an audit event (best-effort observability).
+/// The caller is responsible for catching failures — see `record_audit` in commands.rs.
+pub async fn insert_audit_event(
+    pool: &SqlitePool,
+    action: &str,
+    container_id: Option<&str>,
+    container_name: Option<&str>,
+    details: Option<&str>,
+) -> Result<()> {
+    let id = uuid::Uuid::new_v4().to_string();
+    let ts = Utc::now().to_rfc3339();
+    sqlx::query(
+        r#"INSERT INTO audit_log (id, ts, action, container_id, container_name, details)
+           VALUES (?, ?, ?, ?, ?, ?)"#,
+    )
+    .bind(&id)
+    .bind(&ts)
+    .bind(action)
+    .bind(container_id)
+    .bind(container_name)
+    .bind(details)
+    .execute(pool).await?;
+    Ok(())
+}
+
+/// List audit events, newest first, limited to `limit` rows.
+pub async fn list_audit_events(pool: &SqlitePool, limit: u32) -> Result<Vec<AuditEvent>> {
+    let rows = sqlx::query_as::<_, AuditEventRow>(
+        r#"SELECT id, ts, action, container_id, container_name, details
+           FROM audit_log ORDER BY ts DESC LIMIT ?"#,
+    )
+    .bind(limit as i64)
+    .fetch_all(pool).await?;
+
+    Ok(rows.into_iter().map(|r| AuditEvent {
+        id: r.id,
+        ts: r.ts,
+        action: r.action,
+        container_id: r.container_id,
+        container_name: r.container_name,
+        details: r.details,
+    }).collect())
+}
+
 #[derive(sqlx::FromRow)]
 struct ContainerMetaRow {
     id: String,
@@ -198,4 +242,50 @@ struct ContainerMetaRow {
     created_at: String,
     modified_at: String,
     format_version: i64,
+}
+
+#[derive(sqlx::FromRow)]
+struct AuditEventRow {
+    id: String,
+    ts: String,
+    action: String,
+    container_id: Option<String>,
+    container_name: Option<String>,
+    details: Option<String>,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    async fn test_db() -> (SqlitePool, TempDir) {
+        let dir = TempDir::new().unwrap();
+        let pool = init_db(&dir.path().to_path_buf()).await.unwrap();
+        (pool, dir)
+    }
+
+    #[tokio::test]
+    async fn audit_event_insert_list_roundtrip() {
+        let (pool, _dir) = test_db().await;
+        insert_audit_event(&pool, "create", Some("c1"), Some("test-container"), None).await.unwrap();
+        insert_audit_event(&pool, "delete", Some("c2"), Some("to-delete"), Some(r#"{"reason":"testing"}"#)).await.unwrap();
+
+        let events = list_audit_events(&pool, 10).await.unwrap();
+        assert_eq!(events.len(), 2);
+        assert_eq!(events[0].action, "delete");
+        assert_eq!(events[0].container_name.as_deref(), Some("to-delete"));
+        assert_eq!(events[1].action, "create");
+        assert_eq!(events[1].container_name.as_deref(), Some("test-container"));
+    }
+
+    #[tokio::test]
+    async fn audit_event_list_respects_limit() {
+        let (pool, _dir) = test_db().await;
+        for i in 0..5 {
+            insert_audit_event(&pool, &format!("action_{}", i), None, None, None).await.unwrap();
+        }
+        let events = list_audit_events(&pool, 3).await.unwrap();
+        assert_eq!(events.len(), 3);
+    }
 }

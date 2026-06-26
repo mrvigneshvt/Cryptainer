@@ -52,6 +52,15 @@ export const DEFAULT_KDF_PARAMS: KdfParams = {
   parallelism: 1,
 };
 
+export interface AuditEvent {
+  id: string;
+  ts: string;
+  action: string;
+  container_id?: string;
+  container_name?: string;
+  details?: string;
+}
+
 export interface DownloadResult {
   file_id: string;
   written_path?: string;

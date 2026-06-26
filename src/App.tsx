@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useVaultStore } from './store/vaultStore';
+import { useAuditStore } from './store/auditStore';
 import { CreateWizard } from './components/Container/CreateWizard';
 import { ContainerModal } from './components/Container/ContainerModal';
 import { Settings } from './components/Settings';
 import { ConfirmModal } from './components/UI';
 import { ThemeToggle } from './components/UI/ThemeToggle';
 import { TerminalShell } from './components/Terminal/TerminalShell';
+import { ActivityLogPanel } from './components/Audit/ActivityLogPanel';
 import { useThemeStore } from './store/themeStore';
 import { useAutoLock } from './hooks/useAutoLock';
 import { useMediaQuery } from './hooks/useMediaQuery';
@@ -92,6 +94,8 @@ function App() {
   const [isImporting, setIsImporting] = useState(false);
   const [activeNav, setActiveNav] = useState<NavSection>('containers');
   const [showSettings, setShowSettings] = useState(false);
+  const [showAudit, setShowAudit] = useState(false);
+  const { loadAuditEvents } = useAuditStore();
 
   // Responsive sidebar state
   const { isMobile, isTablet } = useMediaQuery();
@@ -114,6 +118,13 @@ function App() {
   useEffect(() => {
     loadContainers();
   }, []);
+
+  // Reload audit events after vault mutations (containers list changes)
+  useEffect(() => {
+    if (containers.length > 0) {
+      loadAuditEvents();
+    }
+  }, [containers.length]);
 
   // Extract all unique tags from containers
   const allTags = useMemo(() => {
@@ -277,6 +288,10 @@ function App() {
 
           <nav className="sidebar-nav">
             <div className="sidebar-section-label">System</div>
+            <button className="sidebar-nav-item" onClick={() => { setShowAudit(true); loadAuditEvents(); }}>
+              <IconActivity size={18} />
+              <span>Activity Log</span>
+            </button>
             <button className="sidebar-nav-item" onClick={() => setShowSettings(true)}>
               <IconSettings size={18} />
               <span>Settings</span>
@@ -559,6 +574,7 @@ function App() {
         <ContainerModal container={activeContainer} onClose={() => setActiveContainer(null)} />
       )}
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      <ActivityLogPanel open={showAudit} onClose={() => { setShowAudit(false); }} />
       <ConfirmModal
         open={!!pendingDelete}
         danger

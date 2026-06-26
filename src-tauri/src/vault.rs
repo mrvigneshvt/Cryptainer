@@ -74,6 +74,17 @@ pub struct ChunkMetadata {
     pub size: u64,
 }
 
+/// A single audit log event returned by `list_audit_events`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEvent {
+    pub id: String,
+    pub ts: String,
+    pub action: String,
+    pub container_id: Option<String>,
+    pub container_name: Option<String>,
+    pub details: Option<String>,
+}
+
 /// Per-file download result returned by the `download_files` command.
 /// Per-file errors surface via `error` without aborting the batch.
 #[derive(Debug, Clone, Serialize, Deserialize)]
