@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <rect width="32" height="32" fill="#000000"/>
+  <!-- hex scale -->
+  <path d="M16 4 L26 9.5 L26 20.5 L16 26 L6 20.5 L6 9.5 Z" fill="none" stroke="#00FF41" stroke-width="1.4"/>
+  <!-- padlock body -->
+  <rect x="11" y="15" width="10" height="8" rx="1" fill="#00FF41"/>
+  <path d="M13 15 v-2 a3 3 0 0 1 6 0 v2" fill="none" stroke="#00FF41" stroke-width="1.6"/>
+  <rect x="15" y="18" width="2" height="3" fill="#000000"/>
+</svg>

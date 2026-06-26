@@ -1,0 +1,445 @@
+---
+import "../styles/global.css";
+
+const SITE = "https://cryptainer.forked.online";
+const REPO = "https://github.com/mrvigneshvt/cryptainer";
+const PLATFORM = "https://platform.forked.online";
+
+const title = "Cryptainer — Offline Encrypted Container Manager";
+const description =
+  "Cryptainer seals your files into portable, password-locked containers on your own device. AES-256-GCM + Argon2id, 100% offline, zero telemetry. Free, open source, cross-platform — Windows, macOS, Linux, Android & iOS. Built with Rust + Tauri.";
+const ogImage = `${SITE}/og.png`; // 1200x630 social card in /public/og.png
+
+const features = [
+  { i: "crypto", t: "Military-grade encryption", d: "AES-256-GCM authenticated encryption with Argon2id memory-hard key derivation. Choose Fast, Standard, High or Paranoid." },
+  { i: "box",    t: "Encrypted containers", d: "Bundle many files into a single sealed container. Names, metadata and structure are encrypted — not just the bytes." },
+  { i: "bolt",   t: "Lazy decryption", d: "Open a container instantly. Each file decrypts on demand the moment you preview it — nothing sits in the clear." },
+  { i: "wipe",   t: "Memory that forgets", d: "Keys are wrapped in Zeroizing<> and wiped the instant a container locks. Decrypted data is zeroized on eviction." },
+  { i: "file",   t: "Portable .ctnr format", d: "Export a container to a single .ctnr file. Carry it on a USB stick, import it anywhere. No account, no sync, no server." },
+  { i: "offline",t: "100% offline", d: "No cloud. No servers. No telemetry. Zero bytes leave your machine — verify it yourself, the source is open." },
+];
+
+// Download targets. Links are PLACEHOLDERS — swap `href` with the release
+// asset URL and remove `soon: true` once each platform's build is uploaded.
+const downloads = [
+  { os: "Windows", fmt: ".msi installer · x64 / arm64", i: "windows", href: "#", soon: true },
+  { os: "macOS",   fmt: ".dmg · Intel + Apple Silicon", i: "apple",   href: "#", soon: true },
+  { os: "Linux",   fmt: ".AppImage · .deb · .rpm",       i: "linux",   href: "#", soon: true },
+  { os: "Android", fmt: ".apk · arm64-v8a",              i: "android", href: "#", soon: true },
+  { os: "iOS",     fmt: ".ipa · sideload / TestFlight",  i: "apple",   href: "#", soon: true },
+];
+
+const steps = [
+  { t: "Create", d: "Drop in your files and pick a security level. Standard is plenty; Paranoid maxes out Argon2id." },
+  { t: "Encrypt", d: "Set a password. Each file is sealed individually with a fresh nonce. No key ever touches the disk." },
+  { t: "Lock", d: "Close the container — keys vanish from memory. Auto-lock clears it after inactivity, too." },
+  { t: "Carry", d: "Export to .ctnr and take your vault anywhere. Unlock it on any platform with your password." },
+];
+
+const faqs = [
+  { q: "Is Cryptainer really fully offline?", a: "Yes. There is no cloud, no account, and no network code in the data path. Containers, keys, and metadata never leave your device. Because it is open source, you can audit this for yourself." },
+  { q: "What encryption does it use?", a: "AES-256-GCM authenticated encryption for file contents and metadata, with Argon2id memory-hard key derivation from your password. Integrity is protected by SHA-256 checksums and GCM authentication tags that detect any tampering." },
+  { q: "Is it free and open source?", a: "Completely. Cryptainer is FOSS under the MIT license — free to use, inspect, fork and self-build. The full source lives on GitHub." },
+  { q: "Which platforms are supported?", a: "Windows, macOS, Linux, Android and iOS. One Rust + Tauri core runs everywhere, so the .ctnr format and behaviour stay identical across devices." },
+  { q: "Where are my files stored?", a: "Locally — encrypted blobs on disk plus a small SQLite metadata database. You can export any container to a single portable .ctnr file and move it yourself." },
+  { q: "What happens if I forget my password?", a: "Nothing can recover it. No key is stored anywhere, by design — that is the whole point. Keep a backup of important data and use a strong, memorable password or a hint." },
+];
+
+// inline SVG icons — stroke/fill = currentColor, sized via CSS
+const ICONS = {
+  // Military-grade encryption → shield with a keyhole
+  crypto: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 4.5 5.6v5.1c0 4.4 3.2 8.1 7.5 9.3 4.3-1.2 7.5-4.9 7.5-9.3V5.6L12 2.5Z"/><circle cx="12" cy="10.4" r="1.9"/><path d="M12 12.3v3"/></svg>`,
+  // Encrypted containers → a sealed, latched container
+  box: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="13.5" rx="2"/><path d="M3.5 11.6h17"/><path d="M9 6.5V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v1.5"/><circle cx="12" cy="15.6" r="1.5"/></svg>`,
+  // Lazy decryption → instant, on-demand bolt
+  bolt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.7 2.5 5.5 12.8h5l-1.2 8.7 8-11.1h-5.3l1.7-7.9Z"/></svg>`,
+  // Memory that forgets → a memory chip wiped clean
+  wipe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3.5v3M12 3.5v3M14.5 3.5v3M9.5 17.5v3M12 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 12h3M3.5 14.5h3M17.5 9.5h3M17.5 12h3M17.5 14.5h3"/><path d="m12 9.2.85 1.95L14.8 12l-1.95.85L12 14.8l-.85-1.95L9.2 12l1.95-.85Z"/></svg>`,
+  // Portable .ctnr format → a document you can export/carry
+  file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10a1.5 1.5 0 0 0 1.5-1.5V7.5L13.5 2.5Z"/><path d="M13.5 2.5V7.5h5"/><path d="M12 18.5v-6m-2.3 2.3L12 12.2l2.3 2.6"/></svg>`,
+  // 100% offline → no cloud
+  offline: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.2 18.5h9a3.6 3.6 0 0 0 .5-7.16 5.2 5.2 0 0 0-8.7-2.86"/><path d="M7.2 18.5A3.6 3.6 0 0 1 6 11.6"/><path d="M3.5 3.5 20.5 20.5"/></svg>`,
+  windows: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.4 10.5 4.4v7.1H3zM10.5 12.5v7.1L3 18.6v-6.1zM11.6 4.3 21 3v8.5h-9.4zM21 12.5V21l-9.4-1.3v-7.2z"/></svg>`,
+  apple: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12.8c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .7 1.1 1.6 2.3 2.8 2.2 1.1-.1 1.5-.7 2.9-.7s1.7.7 2.9.7 2-1.1 2.7-2.1c.8-1.2 1.2-2.4 1.2-2.4s-2.3-.9-2.3-3.5zM14.3 5.9c.6-.8 1-1.8.9-2.9-.9 0-2 .6-2.6 1.3-.6.7-1.1 1.7-.9 2.7 1 .1 2-.4 2.6-1.1z"/></svg>`,
+  linux: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5c-1 1-1 3-1 5 0 2-1.5 3.5-2.5 5.5C4.5 16 4 18 5 19.5c.7 1 2 1 2.5 0M15 3.5c1 1 1 3 1 5 0 2 1.5 3.5 2.5 5.5 1 2 1.5 4 .5 5.5-.7 1-2 1-2.5 0"/><path d="M9 8.5h.01M15 8.5h.01"/><path d="M10 11c.6.6 3.4.6 4 0"/><path d="M7.5 19.5c1.5 1.5 7.5 1.5 9 0"/></svg>`,
+  android: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M5 11h14v7a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1z"/><path d="M5 11a7 7 0 0 1 14 0"/><path d="M8 8 6.5 6M16 8l1.5-2"/><path d="M9 8h.01M15 8h.01"/><path d="M3 12.5v4M21 12.5v4M9 19v2M15 19v2"/></svg>`,
+  download: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4.5-4.5M12 15l-4.5-4.5M4 19.5h16"/></svg>`,
+  arrow: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14m0 0-6-6m6 6-6 6"/></svg>`,
+  github: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 1.5A10.5 10.5 0 0 0 1.5 12c0 4.6 3 8.55 7.18 9.94.52.1.71-.23.71-.5v-1.9c-2.92.64-3.54-1.25-3.54-1.25-.48-1.21-1.17-1.53-1.17-1.53-.96-.65.07-.64.07-.64 1.06.08 1.62 1.09 1.62 1.09.94 1.62 2.47 1.15 3.07.88.1-.68.37-1.15.67-1.42-2.33-.27-4.78-1.17-4.78-5.18 0-1.15.41-2.08 1.08-2.81-.11-.27-.47-1.34.1-2.79 0 0 .88-.28 2.88 1.07a10 10 0 0 1 5.24 0c2-1.35 2.88-1.07 2.88-1.07.57 1.45.21 2.52.1 2.79.68.73 1.08 1.66 1.08 2.81 0 4.02-2.45 4.9-4.79 5.16.38.33.71.97.71 1.96v2.9c0 .28.19.61.72.5A10.5 10.5 0 0 0 22.5 12 10.5 10.5 0 0 0 12 1.5Z"/></svg>`,
+};
+function icon(name) { return ICONS[name] || ""; }
+
+const jsonLd = {
+  "@context": "https://schema.org",
+  "@graph": [
+    {
+      "@type": "SoftwareApplication",
+      name: "Cryptainer",
+      applicationCategory: "SecurityApplication",
+      operatingSystem: "Windows, macOS, Linux, Android, iOS",
+      description,
+      url: SITE,
+      downloadUrl: REPO,
+      license: "https://opensource.org/licenses/MIT",
+      isAccessibleForFree: true,
+      offers: { "@type": "Offer", price: "0", priceCurrency: "USD" },
+      featureList: features.map((f) => f.t),
+      author: { "@type": "Organization", name: "forked.online", url: PLATFORM },
+    },
+    { "@type": "Organization", name: "forked.online", url: PLATFORM, sameAs: [REPO] },
+    {
+      "@type": "FAQPage",
+      mainEntity: faqs.map((f) => ({
+        "@type": "Question",
+        name: f.q,
+        acceptedAnswer: { "@type": "Answer", text: f.a },
+      })),
+    },
+  ],
+};
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{title}</title>
+    <meta name="description" content={description} />
+    <link rel="canonical" href={SITE} />
+    <meta name="theme-color" content="#00140d" />
+    <meta name="generator" content={Astro.generator} />
+    <meta name="keywords" content="encrypted container, file encryption, offline encryption, AES-256-GCM, Argon2id, Rust, Tauri, open source encryption, FOSS, secure vault, cross-platform encryption, .ctnr" />
+    <meta name="robots" content="index, follow" />
+
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="Cryptainer" />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:url" content={SITE} />
+    <meta property="og:image" content={ogImage} />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:type" content="image/png" />
+    <meta property="og:image:alt" content="Cryptainer — offline encrypted container manager, the armored whale carrying a sealed container" />
+
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={ogImage} />
+
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,200..800&family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap"
+      rel="stylesheet"
+    />
+    <script type="application/ld+json" set:html={JSON.stringify(jsonLd)} is:inline />
+  </head>
+
+  <body>
+    <!-- ============ SEA BACKGROUND ============ -->
+    <div class="sea" aria-hidden="true">
+      <div class="sea__rays"><span></span><span></span><span></span></div>
+      <canvas class="sea__bubbles" id="bubbles"></canvas>
+      <div class="sea__floor"></div>
+    </div>
+
+    <!-- ============ THE CIPHERWHALE (fixed, scroll-driven, z-index 999) ============ -->
+    <div class="cw" id="cw" aria-hidden="true" data-state="cruise">
+      <div class="cw__shield"></div>
+      <div class="cw__shield cw__shield--in"></div>
+      <div class="cw__attacks" id="cwAttacks"></div>
+      <img class="cw__img" src="/cryptainer-logo.png" width="256" height="256" decoding="async"
+           alt="The Cryptainer armored whale carrying a sealed, encrypted container" />
+      <div class="cw__bubbles"><i></i><i></i><i></i></div>
+      <span class="cw__status" id="cwStatus">SEALED</span>
+    </div>
+
+    <!-- ============ NAV ============ -->
+    <header class="nav">
+      <nav class="nav__inner" aria-label="Primary">
+        <a class="brand" href="#top" aria-label="Cryptainer home">
+          <img class="brand__mark" src="/cryptainer-logo.png" width="30" height="30" alt="" />
+          <span class="brand__name">Cryptainer</span>
+        </a>
+        <div class="nav__links">
+          <a href="#features">Features</a>
+          <a href="#security">Security</a>
+          <a href="#download">Download</a>
+          <a href="#faq">FAQ</a>
+          <a href={REPO} rel="noopener">GitHub</a>
+        </div>
+        <a class="btn btn--solid nav__cta" href="#download">Get Cryptainer</a>
+      </nav>
+    </header>
+
+    <main id="top">
+      <!-- ============ HERO ============ -->
+      <section class="hero">
+        <div class="shell">
+          <div class="hero__copy">
+            <span class="eyebrow">Offline encrypted container manager</span>
+            <h1 class="hero__title">
+              Your files,<br /><em>sealed</em> &amp; carried<br />through hostile waters.
+            </h1>
+            <p class="hero__sub">
+              Cryptainer locks your files into portable, password-protected containers
+              <b>on your own device</b>. AES-256-GCM, Argon2id, zero telemetry — the keys
+              surface for seconds and are <b>wiped the instant you lock</b>. Like a whale
+              carrying its cargo through the deep, your data crosses every attack sealed.
+            </p>
+            <div class="hero__actions">
+              <a class="btn btn--solid" href="#download">{icon("download") && <span class="btn__i" set:html={icon("download")} />}Download free</a>
+              <a class="btn btn--ghost" href={REPO} rel="noopener">{<span class="btn__i" set:html={icon("github")} />}View source</a>
+            </div>
+            <ul class="hero__chips">
+              <li>100% offline</li>
+              <li>MIT · open source</li>
+              <li>No telemetry</li>
+              <li>5 platforms</li>
+            </ul>
+          </div>
+        </div>
+        <div class="hero__scroll"><span>scroll — watch it dive</span><i></i></div>
+      </section>
+
+      <!-- ============ LIVE DEMO ============ -->
+      <section class="section-pad demo" id="demo">
+        <div class="shell">
+          <div class="demo__head reveal">
+            <div>
+              <span class="eyebrow">Watch it work</span>
+              <h2>Type a filename.<br />See it vanish into ciphertext.</h2>
+            </div>
+            <p class="demo__intro">Runs entirely in your browser — a faithful illustration of what Cryptainer does to every file you hand it.</p>
+          </div>
+
+          <div class="panel encryptor reveal" role="group" aria-label="Interactive encryption demo">
+            <div class="encryptor__bar">
+              <span class="encryptor__dots"><i></i><i></i><i></i></span>
+              <span class="encryptor__title">cryptainer · seal</span>
+              <span class="encryptor__algo">aes-256-gcm</span>
+            </div>
+            <div class="encryptor__body">
+              <label class="encryptor__row">
+                <span class="encryptor__lead">plaintext file</span>
+                <input id="demoInput" class="encryptor__input" type="text" value="tax_return_2024.pdf" spellcheck="false" autocomplete="off" aria-label="Filename to encrypt" />
+              </label>
+              <div class="encryptor__out">
+                <span class="encryptor__lead">ciphertext · argon2id → aes-256-gcm</span>
+                <p id="demoCipher" class="encryptor__cipher"></p>
+                <div class="encryptor__meta">
+                  <span>size <b id="demoSize">—</b></span>
+                  <span>nonce <b id="demoNonce">—</b></span>
+                  <span>auth-tag <b id="demoTag">—</b></span>
+                  <span class="ok">status <b>SEALED ✓</b></span>
+                </div>
+              </div>
+              <p class="encryptor__hint">Cryptainer never stores the key — only this ciphertext, the nonce, and the tag ever touch your disk.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FEATURES ============ -->
+      <section class="section-pad features" id="features">
+        <div class="shell">
+          <div class="features__head reveal">
+            <span class="eyebrow">What's inside</span>
+            <h2>Encryption you can actually reason about.</h2>
+            <p>No magic, no marketing crypto. Real, audited primitives wired together with memory safety from the ground up in Rust.</p>
+          </div>
+          <div class="fgrid">
+            {features.map((f, idx) => (
+              <article class="fcard reveal" style={`--d:${idx * 60}ms`}>
+                <span class="fcard__icon" set:html={icon(f.i)} />
+                <h3>{f.t}</h3>
+                <p>{f.d}</p>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ SECURITY ============ -->
+      <section class="section-pad sec" id="security">
+        <div class="shell sec__grid">
+          <div class="reveal">
+            <span class="eyebrow">Safe passage</span>
+            <h2>Built to be hard. Honest about its limits.</h2>
+            <p class="sec__lead">Cryptainer protects your data at rest with a transparent, memory-safe stack — and tells you plainly what it does and doesn't defend against.</p>
+            <div class="stack">
+              <div class="stack__row"><div><b>AES-256-GCM</b><span>Authenticated encryption — every file, every nonce fresh</span></div><span class="tag">cipher</span></div>
+              <div class="stack__row"><div><b>Argon2id</b><span>Memory-hard KDF — Fast → Paranoid security levels</span></div><span class="tag">kdf</span></div>
+              <div class="stack__row"><div><b>Zeroize</b><span>Keys &amp; plaintext wiped from RAM on lock / eviction</span></div><span class="tag">memory</span></div>
+              <div class="stack__row"><div><b>SHA-256 + GCM tag</b><span>Tamper &amp; corruption detection on every blob</span></div><span class="tag">integrity</span></div>
+              <div class="stack__row"><div><b>Rust + Tauri</b><span>No buffer overflows, no GC pauses, tiny attack surface</span></div><span class="tag">core</span></div>
+            </div>
+          </div>
+
+          <div class="panel threat reveal">
+            <div class="threat__head"><span>threat model</span><span class="ok">/ verified</span></div>
+            <ul class="threat__list">
+              <li class="yes"><span class="mk">✓</span><span><b>Protected:</b> file contents, names &amp; metadata</span></li>
+              <li class="yes"><span class="mk">✓</span><span><b>Protected:</b> offline &amp; brute-force attacks on stolen blobs</span></li>
+              <li class="yes"><span class="mk">✓</span><span><b>Protected:</b> database theft &amp; blob tampering</span></li>
+              <li class="yes"><span class="mk">✓</span><span><b>Protected:</b> container structure &amp; organisation</span></li>
+              <li class="no"><span class="mk">✕</span><span><b>Not protected:</b> a keylogger or malware on your host</span></li>
+              <li class="no"><span class="mk">✕</span><span><b>Not protected:</b> memory of an <em>already-unlocked</em> container</span></li>
+              <li class="no"><span class="mk">✕</span><span><b>Not protected:</b> compelled disclosure of your password</span></li>
+            </ul>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ DOWNLOAD (placeholders) ============ -->
+      <section class="section-pad download" id="download">
+        <div class="shell">
+          <div class="download__head reveal">
+            <span class="eyebrow">Get Cryptainer</span>
+            <h2>One Rust core. Every device.</h2>
+            <p>A <code>.ctnr</code> sealed on Linux opens, byte-for-byte, on your phone. Builds land here as each platform ships — grab the source any time.</p>
+          </div>
+          <div class="dlgrid">
+            {/* TODO(forked.online): replace each href with the platform's release-asset URL and drop the `soon` badge */}
+            {downloads.map((d) => (
+              <a class="dl reveal" href={d.href} data-os={d.os.toLowerCase()} aria-label={`Download Cryptainer for ${d.os} (link coming soon)`}>
+                <span class="dl__icon" set:html={icon(d.i)} />
+                <span class="dl__meta"><b>{d.os}</b><span>{d.fmt}</span></span>
+                {d.soon ? <span class="dl__badge">Soon</span> : <span class="dl__go" set:html={icon("download")} />}
+              </a>
+            ))}
+          </div>
+          <p class="download__note reveal">Prefer to build it yourself? <a href={`${REPO}#quick-start`} rel="noopener">Compile from source →</a></p>
+        </div>
+      </section>
+
+      <!-- ============ STEPS ============ -->
+      <section class="section-pad steps">
+        <div class="shell">
+          <div class="steps__head reveal">
+            <span class="eyebrow">How it works</span>
+            <h2>From file to sealed vault in four moves.</h2>
+          </div>
+          <ol class="steps__list">
+            {steps.map((s, idx) => (
+              <li class="step reveal" style={`--d:${idx * 70}ms`}>
+                <span class="step__n">{String(idx + 1).padStart(2, "0")}</span>
+                <h3>{s.t}</h3>
+                <p>{s.d}</p>
+              </li>
+            ))}
+          </ol>
+        </div>
+      </section>
+
+      <!-- ============ OPEN SOURCE / FORKED ============ -->
+      <section class="section-pad oss" id="opensource">
+        <div class="shell">
+          <div class="panel oss__panel reveal">
+            <div>
+              <span class="eyebrow">Free &amp; open source</span>
+              <h2>No trust required. Read every line.</h2>
+              <p>Security software you can't inspect is just a promise. Cryptainer is MIT-licensed and fully open — clone it, audit the crypto, build it yourself. Forever free.</p>
+              <div class="oss__actions">
+                <a class="btn btn--solid" href={REPO} rel="noopener">{<span class="btn__i" set:html={icon("github")} />}Star on GitHub</a>
+                <a class="btn btn--ghost" href={`${REPO}#quick-start`} rel="noopener">Build from source</a>
+              </div>
+              <p class="oss__forked">Designed &amp; built by <a href={PLATFORM} rel="noopener">forked.online</a> — shipped on <a href={PLATFORM} rel="noopener">platform.forked.online</a>.</p>
+            </div>
+            <div class="codeblock" aria-hidden="true">
+              <div class="codeblock__bar">~/build-it-yourself</div>
+              <pre><code><span class="c"># clone the source</span>
+git clone <span class="g">{REPO}</span>
+cd cryptainer
+
+<span class="c"># install &amp; run</span>
+npm install
+npm run <span class="a">tauri dev</span>
+
+<span class="c"># build a signed release</span>
+npm run <span class="a">tauri build</span>
+
+<span class="g">✓</span> 100% offline · <span class="g">✓</span> MIT · <span class="g">✓</span> zero telemetry</code></pre>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FAQ ============ -->
+      <section class="section-pad faq" id="faq">
+        <div class="shell">
+          <div class="faq__head reveal">
+            <span class="eyebrow">Questions</span>
+            <h2>Everything you'd ask before trusting it.</h2>
+          </div>
+          <div class="faq__list reveal">
+            {faqs.map((f) => (
+              <details>
+                <summary>{f.q}<span class="pm" set:html={icon("arrow")} /></summary>
+                <p class="faq__a">{f.a}</p>
+              </details>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FINAL CTA ============ -->
+      <section class="cta">
+        <div class="shell">
+          <span class="eyebrow eyebrow--center">Your data. Your device. Your keys.</span>
+          <h2>Seal it. Carry it.<br />Trust no one else.</h2>
+          <p>Free, open source, and offline by design. Put your files in a vault only you can open.</p>
+          <div class="cta__actions">
+            <a class="btn btn--solid" href="#download">Get Cryptainer free</a>
+            <a class="btn btn--ghost" href={REPO} rel="noopener">Read the source</a>
+          </div>
+        </div>
+      </section>
+
+      <!-- ============ FOOTER ============ -->
+      <footer class="footer">
+        <div class="shell">
+          <div class="footer__top">
+            <div class="footer__brand">
+              <a class="brand" href="#top">
+                <img class="brand__mark" src="/cryptainer-logo.png" width="30" height="30" alt="" />
+                <span class="brand__name">Cryptainer</span>
+              </a>
+              <p>Offline encrypted container manager. Your files, sealed in a vault that never leaves your device.</p>
+            </div>
+            <div class="footer__col">
+              <h4>Product</h4>
+              <a href="#features">Features</a>
+              <a href="#security">Security model</a>
+              <a href="#download">Download</a>
+              <a href="#faq">FAQ</a>
+            </div>
+            <div class="footer__col">
+              <h4>Open source</h4>
+              <a href={REPO} rel="noopener">GitHub repo</a>
+              <a href={`${REPO}#quick-start`} rel="noopener">Build guide</a>
+              <a href={`${REPO}/blob/main/LICENSE`} rel="noopener">MIT license</a>
+            </div>
+            <div class="footer__col">
+              <h4>Built with</h4>
+              <a href="https://www.rust-lang.org/" rel="noopener">Rust</a>
+              <a href="https://tauri.app/" rel="noopener">Tauri v2</a>
+              <a href={PLATFORM} rel="noopener">forked.online</a>
+            </div>
+          </div>
+          <div class="footer__bottom">
+            <span>© 2026 Cryptainer · MIT License · FOSS</span>
+            <span>Built by <a href={PLATFORM} rel="noopener">forked.online</a> on <a href={PLATFORM} rel="noopener">platform.forked.online</a></span>
+          </div>
+        </div>
+      </footer>
+    </main>
+
+    <script src="../scripts/sea.js"></script>
+    <script src="../scripts/whale.js"></script>
+    <script src="../scripts/effects.js"></script>
+  </body>
+</html>
