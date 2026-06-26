@@ -829,3 +829,118 @@ pub async fn import_container(
 
     Ok(meta)
 }
+
+/// Resolve a destination filename that doesn't collide with existing files.
+/// `name.ext` → `name (1).ext` → `name (2).ext` … until the path is unused.
+/// Uses the `std::path::Path::extension()` definition of "extension" —
+/// only the part after the LAST dot. Files without an extension get
+/// ` (N)` appended before the whole name: `README` → `README (1)`.
+fn resolve_collision_path(dest_dir: &std::path::Path, name: &str) -> std::path::PathBuf {
+    let stem = std::path::Path::new(name)
+        .file_stem()
+        .map(|s| s.to_string_lossy().into_owned())
+        .unwrap_or_else(|| name.to_string());
+    let ext = std::path::Path::new(name)
+        .extension()
+        .and_then(|e| e.to_str())
+        .map(|e| format!(".{}", e))
+        .unwrap_or_default();
+
+    let candidate = dest_dir.join(name);
+    if !candidate.exists() {
+        return candidate;
+    }
+
+    for n in 1..1000 {
+        let new_name = format!("{} ({}){}", stem, n, ext);
+        let candidate = dest_dir.join(&new_name);
+        if !candidate.exists() {
+            return candidate;
+        }
+    }
+
+    // Fallback: append timestamp (should never happen)
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_nanos())
+        .unwrap_or(0);
+    dest_dir.join(format!("{}_{}{}", stem, ts, ext))
+}
+
+/// Download files from an unlocked container to a chosen directory.
+///
+/// Decrypts each requested file via the v2 session (benefiting from WI-0288's
+/// read-side recovery and LRU cache), writes it to `<dest_dir>/<original_name>`,
+/// and auto-renames on collision (`name.ext` → `name (1).ext` …).
+///
+/// Per-file errors surface via the `error` field in `DownloadResult`; a single
+/// failed file NEVER aborts the whole batch.
+#[tauri::command]
+pub async fn download_files(
+    container_id: String,
+    file_ids: Vec<String>,
+    dest_dir: String,
+    sessions_v2: State<'_, SessionStoreV2>,
+) -> std::result::Result<Vec<vault::DownloadResult>, CryptoError> {
+    let dest = std::path::PathBuf::from(&dest_dir);
+    std::fs::create_dir_all(&dest)?;
+
+    let mut results = Vec::with_capacity(file_ids.len());
+
+    for file_id in &file_ids {
+        match get_file_data_v2(&container_id, file_id, &sessions_v2) {
+            Ok(Some(data)) => {
+                // Look up the file name from session metadata
+                let file_name = {
+                    let store = sessions_v2.0.lock().unwrap();
+                    store.get(&container_id)
+                        .and_then(|session| {
+                            session.metadata.files.iter()
+                                .find(|f| f.id == *file_id)
+                                .map(|f| f.name.clone())
+                        })
+                        .unwrap_or_else(|| file_id.clone())
+                };
+
+                let write_path = resolve_collision_path(&dest, &file_name);
+                match std::fs::write(&write_path, &data) {
+                    Ok(()) => {
+                        let path_str = write_path.to_string_lossy().into_owned();
+                        results.push(vault::DownloadResult {
+                            file_id: file_id.clone(),
+                            written_path: Some(path_str),
+                            bytes: data.len() as u64,
+                            error: None,
+                        });
+                    }
+                    Err(e) => {
+                        results.push(vault::DownloadResult {
+                            file_id: file_id.clone(),
+                            written_path: None,
+                            bytes: 0,
+                            error: Some(format!("Write error: {}", e)),
+                        });
+                    }
+                }
+            }
+            Ok(None) => {
+                results.push(vault::DownloadResult {
+                    file_id: file_id.clone(),
+                    written_path: None,
+                    bytes: 0,
+                    error: Some("No v2 session — container may be locked".into()),
+                });
+            }
+            Err(e) => {
+                results.push(vault::DownloadResult {
+                    file_id: file_id.clone(),
+                    written_path: None,
+                    bytes: 0,
+                    error: Some(e.to_string()),
+                });
+            }
+        }
+    }
+
+    Ok(results)
+}
