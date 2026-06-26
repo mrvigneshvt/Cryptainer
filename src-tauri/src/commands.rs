@@ -960,13 +960,11 @@ pub async fn download_files(
         }
     }
 
-    let container_name = {
-        let store = sessions_v2.0.lock().unwrap();
-        store.get(&container_id).map(|s| {
-            let meta = &s.metadata;
-            meta.files.first().map(|f| f.name.clone()).unwrap_or_default()
-        }).unwrap_or_default()
-    };
+    // Audit container name from DB (not from session metadata's first file name)
+    let container_name = storage::get_container(&pool, &container_id)
+        .await
+        .map(|m| m.name)
+        .unwrap_or_default();
     let details = serde_json::json!({"files": file_ids.len(), "dest_dir": &dest_dir }).to_string();
     record_audit(&pool, "download", Some(&container_id), Some(&container_name), Some(&details));
     Ok(results)
