@@ -16,7 +16,7 @@ use rand::RngCore;
 use crate::{
     crypto::{self, KdfParams},
     storage,
-    vault::{ContainerMeta, ContainerPayload, VaultFile, ContainerMetadataV2, FileMetadata},
+    vault::{self, ContainerMeta, ContainerPayload, VaultFile, ContainerMetadataV2, FileMetadata},
     session::{SessionStore, SessionStoreV2, SessionV2},
     export,
     error::CryptoError,
@@ -120,34 +120,21 @@ pub async fn create_container(
         encrypted_files.push(encrypted);
     }
 
-    // 3. Compute metadata section and calculate file offsets
+    // 3. Compute metadata offsets iteratively (shared helper, converges in 2-3 passes)
     let mut metadata_v2 = ContainerMetadataV2 { version: 2, files: files_meta };
-    let metadata_json = serde_json::to_vec(&metadata_v2)?;
-    let (encrypted_metadata, _metadata_nonce) = crypto::encrypt_section(&metadata_json, &*key)?;
+    let (encrypted_metadata, metadata_nonce) = vault::compute_v2_layout(&key, &mut metadata_v2.files, &encrypted_files)?;
 
-    // Layout: salt (16) | metadata_len (4) | metadata_nonce (12) | metadata_ciphertext | file1 | file2 | ...
-    let metadata_section_len = 4 + crypto::NONCE_LEN + encrypted_metadata.len();
-    let mut current_offset = SALT_LEN + metadata_section_len;
-
-    for (i, fm) in metadata_v2.files.iter_mut().enumerate() {
-        fm.offset = current_offset as u64;
-        current_offset += encrypted_files[i].len();
-    }
-
-    // 4. Re-encrypt metadata with correct offsets
-    let metadata_json_final = serde_json::to_vec(&metadata_v2)?;
-    let (encrypted_metadata_final, metadata_nonce_final) = crypto::encrypt_section(&metadata_json_final, &*key)?;
-
-    // 5. Assemble blob
-    let metadata_section_len_final = 4 + crypto::NONCE_LEN + encrypted_metadata_final.len();
+    // 4. Assemble blob
+    let enc_meta_len = encrypted_metadata.len();
+    let metadata_section_len = 4 + crypto::NONCE_LEN + enc_meta_len;
     let file_data_len: usize = encrypted_files.iter().map(|e| e.len()).sum();
-    let blob_total_len = SALT_LEN + metadata_section_len_final + file_data_len;
+    let blob_total_len = SALT_LEN + metadata_section_len + file_data_len;
 
     let mut blob = Vec::with_capacity(blob_total_len);
     blob.extend_from_slice(&salt);
-    blob.extend_from_slice(&(encrypted_metadata_final.len() as u32).to_le_bytes());
-    blob.extend_from_slice(&metadata_nonce_final);
-    blob.extend_from_slice(&encrypted_metadata_final);
+    blob.extend_from_slice(&(enc_meta_len as u32).to_le_bytes());
+    blob.extend_from_slice(&metadata_nonce);
+    blob.extend_from_slice(&encrypted_metadata);
     for ef in &encrypted_files {
         blob.extend_from_slice(ef);
     }
@@ -305,25 +292,15 @@ fn convert_v1_to_v2(
         encrypted_files.push(encrypted);
     }
 
-    let mut metadata_v2 = ContainerMetadataV2 { version: 2, files: files_meta };
-    let metadata_json = serde_json::to_vec(&metadata_v2)?;
-    let (enc_meta, _meta_nonce) = crypto::encrypt_section(&metadata_json, &*key)?;
+    // Use shared iterative layout helper (same as create_container / save_edits_v2)
+    let (enc_meta, meta_nonce) = vault::compute_v2_layout(&key, &mut files_meta, &encrypted_files)?;
 
-    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta.len();
-    let mut offset = SALT_LEN + meta_section_len;
-    for (i, fm) in metadata_v2.files.iter_mut().enumerate() {
-        fm.offset = offset as u64;
-        offset += encrypted_files[i].len();
-    }
-
-    let metadata_json = serde_json::to_vec(&metadata_v2)?;
-    let (enc_meta, meta_nonce) = crypto::encrypt_section(&metadata_json, &*key)?;
-
+    let enc_meta_len = enc_meta.len();
+    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta_len;
     let file_data_len: usize = encrypted_files.iter().map(|e| e.len()).sum();
-    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta.len();
     let mut blob = Vec::with_capacity(SALT_LEN + meta_section_len + file_data_len);
     blob.extend_from_slice(&salt);
-    blob.extend_from_slice(&(enc_meta.len() as u32).to_le_bytes());
+    blob.extend_from_slice(&(enc_meta_len as u32).to_le_bytes());
     blob.extend_from_slice(&meta_nonce);
     blob.extend_from_slice(&enc_meta);
     for ef in &encrypted_files {
@@ -423,7 +400,7 @@ fn get_file_data_v2(
     sessions_v2: &SessionStoreV2,
 ) -> std::result::Result<Option<Vec<u8>>, CryptoError> {
     // Check v2 session and cache first
-    let (_cache_hit, blob_path, key_arr, file_meta_opt) = {
+    let (blob_path, key_arr, fm, prior_sum) = {
         let store = sessions_v2.0.lock().unwrap();
         let session = match store.get(container_id) {
             Some(s) => s,
@@ -435,26 +412,40 @@ fn get_file_data_v2(
             return Ok(Some(cached));
         }
 
-        // Get file metadata
-        let fm = match session.metadata.files.iter().find(|f| f.id == file_id) {
-            Some(fm) => fm.clone(),
-            None => return Err(CryptoError::NotFound(file_id.to_string())),
-        };
+        // Find file by id AND its index for prior-sum calculation (read-side recovery)
+        let idx = session.metadata.files.iter()
+            .position(|f| f.id == file_id)
+            .ok_or_else(|| CryptoError::NotFound(file_id.to_string()))?;
+        let fm = session.metadata.files[idx].clone();
+
+        // Compute cumulative encrypted size of prior files for read-side recovery
+        let prior_sum: usize = session.metadata.files.iter()
+            .take(idx)
+            .map(|f| f.size as usize + 16) // plaintext + GCM tag
+            .sum();
 
         let mut key = [0u8; 32];
         key.copy_from_slice(session.key.as_ref());
-        (false, session.blob_path.clone(), key, Some(fm))
+        (session.blob_path.clone(), key, fm, prior_sum)
     };
 
-    let fm = file_meta_opt.ok_or_else(|| CryptoError::NotFound(file_id.to_string()))?;
-
-    // Seek + read from blob
+    // Open blob and read metadata_len from header (read-side recovery)
     let mut file = std::fs::File::open(&blob_path)?;
-    let offset = fm.offset;
+    use std::io::{Read, Seek, SeekFrom};
+
+    let mut meta_len_buf = [0u8; 4];
+    file.seek(SeekFrom::Start(SALT_LEN as u64))?;
+    file.read_exact(&mut meta_len_buf)?;
+    let metadata_len = u32::from_le_bytes(meta_len_buf) as usize;
+
+    // Compute actual offset: ignores stored fm.offset and derives from
+    // blob header metadata_len + cumulative prior-file sums (read-side recovery)
+    let actual_offset = (SALT_LEN + 4 + crypto::NONCE_LEN + metadata_len + prior_sum) as u64;
+
+    // Seek + read from blob at the recovered offset
     let enc_len = fm.size as usize + 16; // +GCM tag
     let mut encrypted = vec![0u8; enc_len];
-    use std::io::{Read, Seek, SeekFrom};
-    file.seek(SeekFrom::Start(offset))?;
+    file.seek(SeekFrom::Start(actual_offset))?;
     file.read_exact(&mut encrypted)?;
 
     let plaintext = crypto::decrypt_section(&encrypted, &key_arr, &fm.data_nonce)?;
@@ -601,21 +592,30 @@ async fn save_edits_v2(
     // Read existing blob
     let blob = std::fs::read(&meta.blob_path)?;
 
+    // Read metadata_len from blob header for read-side recovery
+    let meta_len_bytes: [u8; 4] = blob[SALT_LEN..SALT_LEN + 4].try_into().unwrap();
+    let blob_metadata_len = u32::from_le_bytes(meta_len_bytes) as usize;
+
     // Decrypt remaining files (not removed), re-encrypt with new nonces
+    // Uses read-side offset recovery (ignores stored fm.offset, computes from
+    // blob header metadata_len + cumulative {size+16} sums) so that containers
+    // created with the buggy two-pass code remain readable.
     let mut new_meta: Vec<FileMetadata> = Vec::new();
     let mut encrypted_parts: Vec<Vec<u8>> = Vec::new();
     let mut total_size: u64 = 0;
+    let mut prior_sum: usize = 0; // cumulative encrypted size of prior retained files
 
     for fm in &old_metadata.files {
         if file_ids_to_remove.contains(&fm.id) {
             continue;
         }
-        let offset = fm.offset as usize;
+        // Read-side recovery: compute actual offset from blob header metadata_len
+        let actual_offset = SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum;
         let enc_len = fm.size as usize + 16;
-        if offset + enc_len > blob.len() {
+        if actual_offset + enc_len > blob.len() {
             return Err(CryptoError::IntegrityFailure);
         }
-        let plaintext = crypto::decrypt_section(&blob[offset..offset + enc_len], &*key_arr, &fm.data_nonce)?;
+        let plaintext = crypto::decrypt_section(&blob[actual_offset..actual_offset + enc_len], &key_arr, &fm.data_nonce)?;
         let sha256 = crypto::sha256_hex(&plaintext);
         let (new_enc, new_nonce) = crypto::encrypt_section(&plaintext, &*key_arr)?;
 
@@ -631,6 +631,7 @@ async fn save_edits_v2(
         });
         total_size += fm.size;
         encrypted_parts.push(new_enc);
+        prior_sum += enc_len;
     }
 
     // Encrypt new files
@@ -651,30 +652,18 @@ async fn save_edits_v2(
         encrypted_parts.push(enc);
     }
 
-    // Calculate offsets — first encrypt metadata to get its size
+    // Compute offsets iteratively using shared helper
     let mut metadata_v2 = ContainerMetadataV2 { version: 2, files: new_meta };
-    let metadata_json = serde_json::to_vec(&metadata_v2)?;
-    let (enc_meta, _meta_nonce) = crypto::encrypt_section(&metadata_json, &*key_arr)?;
+    let (enc_meta, meta_nonce) = vault::compute_v2_layout(&key_arr, &mut metadata_v2.files, &encrypted_parts)?;
 
-    // Compute final offsets for each file in metadata
-    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta.len();
-    let mut offset = SALT_LEN + meta_section_len;
-    for (i, fm) in metadata_v2.files.iter_mut().enumerate() {
-        fm.offset = offset as u64;
-        offset += encrypted_parts[i].len();
-    }
-
-    // Re-encrypt metadata with correct offsets
-    let metadata_json = serde_json::to_vec(&metadata_v2)?;
-    let (enc_meta, meta_nonce) = crypto::encrypt_section(&metadata_json, &*key_arr)?;
-
-    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta.len();
+    let enc_meta_len = enc_meta.len();
+    let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta_len;
     let file_data_len: usize = encrypted_parts.iter().map(|e| e.len()).sum();
 
     // Assemble v2 blob
     let mut new_blob = Vec::with_capacity(SALT_LEN + meta_section_len + file_data_len);
     new_blob.extend_from_slice(&salt);
-    new_blob.extend_from_slice(&(enc_meta.len() as u32).to_le_bytes());
+    new_blob.extend_from_slice(&(enc_meta_len as u32).to_le_bytes());
     new_blob.extend_from_slice(&meta_nonce);
     new_blob.extend_from_slice(&enc_meta);
     for ef in &encrypted_parts {
