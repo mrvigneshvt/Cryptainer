@@ -74,6 +74,16 @@ pub struct ChunkMetadata {
     pub size: u64,
 }
 
+/// Per-file download result returned by the `download_files` command.
+/// Per-file errors surface via `error` without aborting the batch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadResult {
+    pub file_id: String,
+    pub written_path: Option<String>,
+    pub bytes: u64,
+    pub error: Option<String>,
+}
+
 pub const VIDEO_CHUNK_SIZE: u64 = 2 * 1024 * 1024; // 2 MB
 
 /// Iteratively compute the v2 blob layout until the encrypted metadata length stabilises.

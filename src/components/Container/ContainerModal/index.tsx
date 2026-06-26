@@ -3,6 +3,7 @@ import { Modal } from '../../UI';
 import { LockView } from './LockView';
 import { OpenView } from './OpenView';
 import { EditView } from './EditView';
+import { DownloadView } from './DownloadView';
 import { PreviewRouter } from '../../Preview';
 import { useVaultStore } from '../../../store/vaultStore';
 import type { ContainerMeta, VaultFileMeta } from '../../../types/vault';
@@ -13,7 +14,7 @@ interface ContainerModalProps {
   onClose: () => void;
 }
 
-type ViewState = 'locked' | 'open' | 'edit' | 'preview';
+type ViewState = 'locked' | 'open' | 'edit' | 'preview' | 'download';
 
 export const ContainerModal: React.FC<ContainerModalProps> = ({
   container,
@@ -41,6 +42,14 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleDownload = () => {
+    setView('download');
+  };
+
+  const handleCloseDownload = () => {
+    setView('open');
   };
 
   const handleLock = async () => {
@@ -138,7 +147,16 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
             files={files}
             onEdit={() => setView('edit')}
             onLock={handleLock}
+            onDownload={handleDownload}
             onPreview={handlePreview}
+          />
+        )}
+
+        {view === 'download' && (
+          <DownloadView
+            containerId={container.id}
+            files={files}
+            onClose={handleCloseDownload}
           />
         )}
 

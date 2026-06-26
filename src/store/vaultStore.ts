@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import type { ContainerMeta, VaultFileMeta, CreateContainerInput, FileInput } from '../types/vault';
+import type { ContainerMeta, VaultFileMeta, CreateContainerInput, FileInput, DownloadResult } from '../types/vault';
 import { isTauri, MOCK_CONTAINERS } from '../utils/tauri';
 
 interface VaultState {
@@ -18,6 +18,7 @@ interface VaultState {
   releaseFileData:   (containerId: string, fileId: string) => Promise<void>;
   exportContainer:   (id: string, destPath: string) => Promise<void>;
   importContainer:   (srcPath: string) => Promise<ContainerMeta>;
+  downloadFiles:    (containerId: string, fileIds: string[], destDir: string) => Promise<DownloadResult[]>;
   saveContainerEdits: (containerId: string, password: string, filesToAdd: FileInput[], fileIdsToRemove: string[]) => Promise<ContainerMeta>;
   clearError:        () => void;
 }
@@ -137,6 +138,16 @@ export const useVaultStore = create<VaultState>((set) => ({
       const meta = await invoke<ContainerMeta>('import_container', { srcPath });
       set(s => ({ containers: [meta, ...s.containers] }));
       return meta;
+    } catch (e) {
+      set({ error: String(e) });
+      throw e;
+    }
+  },
+
+  downloadFiles: async (containerId, fileIds, destDir) => {
+    try {
+      if (!isTauri()) return [];
+      return await invoke<DownloadResult[]>('download_files', { containerId, fileIds, destDir });
     } catch (e) {
       set({ error: String(e) });
       throw e;
