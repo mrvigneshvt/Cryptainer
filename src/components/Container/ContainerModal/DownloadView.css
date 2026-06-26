@@ -44,6 +44,14 @@
   cursor: default;
 }
 
+.download-folder-hint {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+}
+
 .download-btn {
   display: inline-flex;
   align-items: center;

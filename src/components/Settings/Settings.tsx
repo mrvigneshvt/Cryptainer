@@ -1,18 +1,23 @@
 import React, { useState, useEffect } from 'react';
 import { Modal, Button } from '../UI';
+import { useThemeStore, ThemeId } from '../../store/themeStore';
 import { SECURITY_PRESETS } from '../../types/vault';
 import './Settings.css';
+
+const THEME_ORDER: { id: ThemeId; label: string }[] = [
+  { id: 'prism', label: 'Light' },
+  { id: 'cipher', label: 'Dark' },
+  { id: 'terminal', label: 'Terminal' },
+];
 
 interface SettingsData {
   defaultPreset: number;
   autoLockTimeout: number | null;
-  theme: 'dark' | 'light' | 'system';
 }
 
 const DEFAULT_SETTINGS: SettingsData = {
-  defaultPreset: 1, // Standard
-  autoLockTimeout: 5 * 60 * 1000, // 5 minutes
-  theme: 'dark',
+  defaultPreset: 1,
+  autoLockTimeout: 5 * 60 * 1000,
 };
 
 interface SettingsProps {
@@ -22,6 +27,8 @@ interface SettingsProps {
 export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
   const [settings, setSettings] = useState<SettingsData>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
+  const theme = useThemeStore((s) => s.theme);
+  const setTheme = useThemeStore((s) => s.setTheme);
 
   useEffect(() => {
     const saved = localStorage.getItem('cryptainer_settings');
@@ -99,14 +106,14 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
           <div className="setting-item">
             <label>Theme</label>
             <div className="theme-options">
-              {(['dark', 'light', 'system'] as const).map(theme => (
+              {THEME_ORDER.map(({ id, label }) => (
                 <button
-                  key={theme}
+                  key={id}
                   type="button"
-                  className={`theme-btn ${settings.theme === theme ? 'active' : ''}`}
-                  onClick={() => updateSetting('theme', theme)}
+                  className={`theme-btn ${theme === id ? 'active' : ''}`}
+                  onClick={() => setTheme(id)}
                 >
-                  {theme.charAt(0).toUpperCase() + theme.slice(1)}
+                  {label}
                 </button>
               ))}
             </div>
@@ -121,6 +128,16 @@ export const Settings: React.FC<SettingsProps> = ({ onClose }) => {
             <p className="about-desc">
               Offline encrypted container manager with AES-256-GCM encryption
             </p>
+            <p className="about-author">
+              Built by: <a href="https://forked.online" target="_blank" rel="noopener noreferrer">VIXYZ</a>
+            </p>
+            <a href="mailto:vixyz@forked.online" className="about-contact">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z" />
+                <polyline points="22,6 12,13 2,6" />
+              </svg>
+              Contact
+            </a>
           </div>
         </section>
 

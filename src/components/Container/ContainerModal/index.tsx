@@ -23,6 +23,7 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
   const [view, setView] = useState<ViewState>('locked');
   const [files, setFiles] = useState<VaultFileMeta[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [previewFile, setPreviewFile] = useState<VaultFileMeta | null>(null);
   const [previewData, setPreviewData] = useState<Uint8Array | null>(null);
   const viewRef = useRef(view);
@@ -32,13 +33,14 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
   const { unlockContainer, lockContainer, getFileData, saveContainerEdits, releaseFileData } = useVaultStore();
 
   const handleUnlock = async (password: string) => {
+    setError(null);
     setIsLoading(true);
     try {
       const fileList = await unlockContainer(container.id, password);
       setFiles(fileList);
       setView('open');
     } catch (e) {
-      console.error('Unlock failed:', e);
+      setError(String(e));
     } finally {
       setIsLoading(false);
     }
@@ -62,6 +64,7 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
     await lockContainer(container.id);
     setView('locked');
     setFiles([]);
+    setError(null);
   };
 
   const handleSaveEdits = async (
@@ -69,9 +72,9 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
     filesToRemove: string[],
     newFiles: File[]
   ) => {
+    setError(null);
     setIsLoading(true);
     try {
-      // Convert new files to FileInput format
       const fileInputs = await Promise.all(
         newFiles.map(async (file) => {
           const arrayBuffer = await file.arrayBuffer();
@@ -85,18 +88,18 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
 
       await saveContainerEdits(container.id, password, fileInputs, filesToRemove);
       
-      // Refresh the file list — this re-derives Argon2 on the Rust side
       const updatedFiles = await unlockContainer(container.id, password);
       setFiles(updatedFiles);
       setView('open');
     } catch (e) {
-      console.error('Save failed:', e);
+      setError(String(e));
     } finally {
       setIsLoading(false);
     }
   };
 
   const handlePreview = async (file: VaultFileMeta) => {
+    setError(null);
     setIsLoading(true);
     try {
       const data = await getFileData(container.id, file.id);
@@ -104,7 +107,7 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
       setPreviewData(data);
       setView('preview');
     } catch (e) {
-      console.error('Preview failed:', e);
+      setError(String(e));
     } finally {
       setIsLoading(false);
     }
@@ -133,11 +136,22 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
   return (
     <Modal open={true} onClose={onClose} size="lg">
       <div className="container-modal">
+        {error && view !== 'locked' && (
+          <div className="container-modal-error">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="12" y1="8" x2="12" y2="12" />
+              <line x1="12" y1="16" x2="12.01" y2="16" />
+            </svg>
+            <span>{error}</span>
+          </div>
+        )}
         {view === 'locked' && (
           <LockView
             container={container}
             onUnlock={handleUnlock}
             isLoading={isLoading}
+            error={error}
           />
         )}
 

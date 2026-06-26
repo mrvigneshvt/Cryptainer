@@ -8,12 +8,14 @@ import { ConfirmModal } from './components/UI';
 import { ThemeToggle } from './components/UI/ThemeToggle';
 import { TerminalShell } from './components/Terminal/TerminalShell';
 import { ActivityLogPanel } from './components/Audit/ActivityLogPanel';
+import { Splash } from './components/Splash/Splash';
 import { useThemeStore } from './store/themeStore';
 import { useAutoLock } from './hooks/useAutoLock';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { ContainerMeta } from './types/vault';
 import { formatBytes } from './utils/format';
+import logoUrl from './assets/cryptainer-logo.png';
 import './App.css';
 
 type SortOption = 'name' | 'date' | 'size' | 'files';
@@ -178,18 +180,20 @@ function App() {
       });
       if (selected && Array.isArray(selected)) {
         let successCount = 0, failCount = 0;
+        let lastError = '';
         for (const path of selected) {
           try { await importContainer(path); successCount++; }
-          catch { failCount++; }
+          catch (e) { failCount++; lastError = String(e); }
         }
         if (failCount > 0) {
-          console.warn(failCount === selected.length
+          const msg = failCount === selected.length
             ? `Import failed for all ${failCount} files`
-            : `Imported ${successCount} file(s), ${failCount} failed`);
+            : `Imported ${successCount} file(s), ${failCount} failed`;
+          useVaultStore.setState({ error: `${msg}: ${lastError}` });
         }
       }
     } catch (e) {
-      console.error('Import cancelled:', e);
+      // Dialog cancelled — do nothing
     } finally {
       setIsImporting(false);
     }
@@ -239,6 +243,7 @@ function App() {
 
   return (
     <div className="app">
+      <Splash />
       {/* Dev-mode banner */}
       {isMock && (
         <div className="dev-banner">
@@ -252,7 +257,7 @@ function App() {
         <aside className="sidebar" role="navigation" aria-label="Main navigation">
           <div className="sidebar-logo">
             <div className="sidebar-logo-icon-wrap">
-              <IconLock size={22} />
+              <img className="sidebar-logo-img" src={logoUrl} alt="Cryptainer" />
             </div>
             <span className="sidebar-logo-text">Cryptainer</span>
           </div>
@@ -330,6 +335,9 @@ function App() {
         {/* Topbar */}
         <div className="topbar">
           <div className="topbar-left">
+            {isSmallScreen && (
+              <img className="topbar-logo" src={logoUrl} alt="Cryptainer" />
+            )}
             <h1 className="topbar-title">Containers</h1>
             <span className="topbar-subtitle">{containers.length} total</span>
           </div>

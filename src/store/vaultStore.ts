@@ -16,6 +16,7 @@ interface VaultState {
   lockContainer:     (id: string) => Promise<void>;
   getFileData:       (containerId: string, fileId: string) => Promise<Uint8Array>;
   releaseFileData:   (containerId: string, fileId: string) => Promise<void>;
+  getDownloadDir:    () => Promise<string>;
   exportContainer:   (id: string, destPath: string) => Promise<void>;
   importContainer:   (srcPath: string) => Promise<ContainerMeta>;
   downloadFiles:    (containerId: string, fileIds: string[], destDir: string) => Promise<DownloadResult[]>;
@@ -116,6 +117,11 @@ export const useVaultStore = create<VaultState>((set) => ({
   releaseFileData: async (containerId, fileId) => {
     if (!isTauri()) return;
     await invoke('release_file_data', { containerId, fileId });
+  },
+
+  getDownloadDir: async () => {
+    if (!isTauri()) return '/tmp';
+    return await invoke<string>('get_download_dir');
   },
 
   exportContainer: async (id, destPath) => {

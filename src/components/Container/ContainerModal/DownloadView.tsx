@@ -1,6 +1,7 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
 import { useVaultStore } from '../../../store/vaultStore';
+import { useMediaQuery } from '../../../hooks/useMediaQuery';
 import { formatBytes } from '../../../utils/format';
 import type { VaultFileMeta, DownloadResult } from '../../../types/vault';
 import './DownloadView.css';
@@ -16,7 +17,9 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
   files,
   onClose,
 }) => {
-  const { downloadFiles } = useVaultStore();
+  const { downloadFiles, getDownloadDir } = useVaultStore();
+  const { isMobile, isTablet } = useMediaQuery();
+  const isSmallScreen = isMobile || isTablet;
   const [selectedIds, setSelectedIds] = useState<Set<string>>(
     new Set(files.map(f => f.id))
   );
@@ -24,6 +27,15 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
   const [isDownloading, setIsDownloading] = useState(false);
   const [results, setResults] = useState<DownloadResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // On mobile, auto-fetch the downloads directory (no folder picker available)
+  useEffect(() => {
+    if (isSmallScreen && !destDir) {
+      getDownloadDir()
+        .then(dir => { setDestDir(dir); })
+        .catch(e => setError(String(e)));
+    }
+  }, [isSmallScreen, destDir, getDownloadDir]);
 
   const handleChooseFolder = useCallback(async () => {
     try {
@@ -90,25 +102,41 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
         </p>
       </div>
 
-      {/* Folder picker */}
-      <div className="download-folder">
-        <label className="download-label">Destination folder</label>
-        <div className="download-folder-row">
-          <input
-            className="download-folder-input"
-            type="text"
-            readOnly
-            value={destDir || ''}
-            placeholder="No folder selected"
-          />
-          <button className="download-btn download-btn-secondary" onClick={handleChooseFolder}>
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-            </svg>
-            Choose folder
-          </button>
+      {/* Folder picker — desktop only; mobile auto-uses Downloads */}
+      {isSmallScreen ? (
+        <div className="download-folder">
+          <label className="download-label">Destination folder</label>
+          <div className="download-folder-row">
+            <input
+              className="download-folder-input"
+              type="text"
+              readOnly
+              value={destDir || 'Detecting…'}
+              placeholder="Downloads"
+            />
+            <span className="download-folder-hint">Saving to Downloads</span>
+          </div>
         </div>
-      </div>
+      ) : (
+        <div className="download-folder">
+          <label className="download-label">Destination folder</label>
+          <div className="download-folder-row">
+            <input
+              className="download-folder-input"
+              type="text"
+              readOnly
+              value={destDir || ''}
+              placeholder="No folder selected"
+            />
+            <button className="download-btn download-btn-secondary" onClick={handleChooseFolder}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              Choose folder
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* File list with checkboxes */}
       <div className="download-files">

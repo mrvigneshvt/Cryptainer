@@ -7,12 +7,14 @@ interface LockViewProps {
   container: ContainerMeta;
   onUnlock: (password: string) => void;
   isLoading?: boolean;
+  error?: string | null;
 }
 
 export const LockView: React.FC<LockViewProps> = ({
   container,
   onUnlock,
   isLoading = false,
+  error: serverError,
 }) => {
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -104,7 +106,7 @@ export const LockView: React.FC<LockViewProps> = ({
           </div>
         )}
 
-        {error && <div className="lock-error">{error}</div>}
+        {(error || serverError) && <div className="lock-error">{serverError || error}</div>}
 
         <button
           className="lock-unlock-btn"
