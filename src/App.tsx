@@ -119,12 +119,7 @@ function App() {
     loadContainers();
   }, []);
 
-  // Reload audit events after vault mutations (containers list changes)
-  useEffect(() => {
-    if (containers.length > 0) {
-      loadAuditEvents();
-    }
-  }, [containers.length]);
+  // Audit events are loaded by ActivityLogPanel when it opens
 
   // Extract all unique tags from containers
   const allTags = useMemo(() => {
