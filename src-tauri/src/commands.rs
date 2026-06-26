@@ -614,12 +614,13 @@ async fn save_edits_v2(
     let mut prior_sum: usize = 0; // cumulative encrypted size of prior retained files
 
     for fm in &old_metadata.files {
+        let enc_len = fm.size as usize + 16;
         if file_ids_to_remove.contains(&fm.id) {
+            prior_sum += enc_len;
             continue;
         }
         // Read-side recovery: compute actual offset from blob header metadata_len
         let actual_offset = SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum;
-        let enc_len = fm.size as usize + 16;
         if actual_offset + enc_len > blob.len() {
             return Err(CryptoError::IntegrityFailure);
         }
