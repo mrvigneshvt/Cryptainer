@@ -92,6 +92,22 @@
   background: linear-gradient(135deg, var(--accent-dim), transparent);
   color: var(--accent);
   flex-shrink: 0;
+  overflow: hidden;
+}
+
+.sidebar-logo-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.topbar-logo {
+  width: 32px;
+  height: 32px;
+  object-fit: contain;
+  border-radius: var(--radius-md);
+  flex-shrink: 0;
+  align-self: center;
 }
 
 .sidebar-logo-text {
