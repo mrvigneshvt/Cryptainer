@@ -180,18 +180,20 @@ function App() {
       });
       if (selected && Array.isArray(selected)) {
         let successCount = 0, failCount = 0;
+        let lastError = '';
         for (const path of selected) {
           try { await importContainer(path); successCount++; }
-          catch { failCount++; }
+          catch (e) { failCount++; lastError = String(e); }
         }
         if (failCount > 0) {
-          console.warn(failCount === selected.length
+          const msg = failCount === selected.length
             ? `Import failed for all ${failCount} files`
-            : `Imported ${successCount} file(s), ${failCount} failed`);
+            : `Imported ${successCount} file(s), ${failCount} failed`;
+          useVaultStore.setState({ error: `${msg}: ${lastError}` });
         }
       }
     } catch (e) {
-      console.error('Import cancelled:', e);
+      // Dialog cancelled — do nothing
     } finally {
       setIsImporting(false);
     }
