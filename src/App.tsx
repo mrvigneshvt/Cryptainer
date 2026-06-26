@@ -3,6 +3,7 @@ import { useVaultStore } from './store/vaultStore';
 import { CreateWizard } from './components/Container/CreateWizard';
 import { ContainerModal } from './components/Container/ContainerModal';
 import { Settings } from './components/Settings';
+import { ConfirmModal } from './components/UI';
 import { ThemeToggle } from './components/UI/ThemeToggle';
 import { TerminalShell } from './components/Terminal/TerminalShell';
 import { useThemeStore } from './store/themeStore';
@@ -199,12 +200,22 @@ function App() {
     } catch { /* handled by vaultStore */ }
   };
 
-  const handleDelete = async (container: ContainerMeta, e: React.MouseEvent) => {
+  const [pendingDelete, setPendingDelete] = useState<ContainerMeta | null>(null);
+
+  const handleDelete = (container: ContainerMeta, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(`Delete "${container.name}"? This cannot be undone.`)) {
-      try { await deleteContainer(container.id); }
-      catch { /* handled by vaultStore */ }
-    }
+    setPendingDelete(container);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!pendingDelete) return;
+    try { await deleteContainer(pendingDelete.id); }
+    catch { /* handled by vaultStore */ }
+    setPendingDelete(null);
+  };
+
+  const handleCancelDelete = () => {
+    setPendingDelete(null);
   };
 
   const handleCardKeyDown = (container: ContainerMeta, e: React.KeyboardEvent) => {
@@ -548,6 +559,15 @@ function App() {
         <ContainerModal container={activeContainer} onClose={() => setActiveContainer(null)} />
       )}
       {showSettings && <Settings onClose={() => setShowSettings(false)} />}
+      <ConfirmModal
+        open={!!pendingDelete}
+        danger
+        title="Delete container"
+        message={`Delete "${pendingDelete?.name ?? ''}"? This cannot be undone.`}
+        confirmLabel="Delete"
+        onConfirm={handleConfirmDelete}
+        onCancel={handleCancelDelete}
+      />
     </div>
   );
 }
