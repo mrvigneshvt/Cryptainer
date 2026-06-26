@@ -19,14 +19,15 @@ const features = [
   { i: "offline",t: "100% offline", d: "No cloud. No servers. No telemetry. Zero bytes leave your machine — verify it yourself, the source is open." },
 ];
 
-// Download targets. Links are PLACEHOLDERS — swap `href` with the release
-// asset URL and remove `soon: true` once each platform's build is uploaded.
+// Download targets. Live builds point at the GitHub Release `latest/download`
+// alias (stable URLs across versions). For the rest, swap `href` to the asset
+// URL and set `soon: false` once that platform's build ships.
 const downloads = [
-  { os: "Windows", fmt: ".msi installer · x64 / arm64", i: "windows", href: "#", soon: true },
-  { os: "macOS",   fmt: ".dmg · Intel + Apple Silicon", i: "apple",   href: "#", soon: true },
-  { os: "Linux",   fmt: ".AppImage · .deb · .rpm",       i: "linux",   href: "#", soon: true },
-  { os: "Android", fmt: ".apk · arm64-v8a",              i: "android", href: "#", soon: true },
-  { os: "iOS",     fmt: ".ipa · sideload / TestFlight",  i: "apple",   href: "#", soon: true },
+  { os: "Windows", fmt: ".msi installer · x64 / arm64",   i: "windows", href: "#", soon: true },
+  { os: "macOS",   fmt: ".dmg · Intel + Apple Silicon",   i: "apple",   href: "#", soon: true },
+  { os: "Linux",   fmt: ".AppImage · runs on any distro", i: "linux",   href: `${REPO}/releases/latest/download/Cryptainer-linux.AppImage`, soon: false },
+  { os: "Android", fmt: ".apk · universal · v0.1.0",       i: "android", href: `${REPO}/releases/latest/download/Cryptainer-android.apk`, soon: false },
+  { os: "iOS",     fmt: ".ipa · sideload / TestFlight",    i: "apple",   href: "#", soon: true },
 ];
 
 const steps = [
@@ -47,18 +48,19 @@ const faqs = [
 
 // inline SVG icons — stroke/fill = currentColor, sized via CSS
 const ICONS = {
+  // Duotone icon set (soft fill + crisp stroke + solid accent details).
   // Military-grade encryption → shield with a keyhole
-  crypto: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 4.5 5.6v5.1c0 4.4 3.2 8.1 7.5 9.3 4.3-1.2 7.5-4.9 7.5-9.3V5.6L12 2.5Z"/><circle cx="12" cy="10.4" r="1.9"/><path d="M12 12.3v3"/></svg>`,
-  // Encrypted containers → a sealed, latched container
-  box: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="6.5" width="17" height="13.5" rx="2"/><path d="M3.5 11.6h17"/><path d="M9 6.5V5a1.5 1.5 0 0 1 1.5-1.5h3A1.5 1.5 0 0 1 15 5v1.5"/><circle cx="12" cy="15.6" r="1.5"/></svg>`,
-  // Lazy decryption → instant, on-demand bolt
-  bolt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12.7 2.5 5.5 12.8h5l-1.2 8.7 8-11.1h-5.3l1.7-7.9Z"/></svg>`,
+  crypto: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.5 4.8 5.4v5.4c0 4.3 3.1 7.8 7.2 8.9 4.1-1.1 7.2-4.6 7.2-8.9V5.4L12 2.5Z" fill="currentColor" fill-opacity="0.12"/><circle cx="12" cy="10.5" r="1.9" fill="currentColor" stroke="none"/><path d="M12 12.4v3"/></svg>`,
+  // Encrypted containers → a vault / safe with a combination dial
+  box: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="3.5" y="4.5" width="17" height="15" rx="2.5" fill="currentColor" fill-opacity="0.1"/><circle cx="12" cy="12" r="3.8"/><path d="M12 12V9.2"/><circle cx="12" cy="12" r="0.7" fill="currentColor" stroke="none"/><path d="M6 19.5 4.8 21M18 19.5 19.2 21"/></svg>`,
+  // Lazy decryption → instant bolt in a soft badge
+  bolt: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9.2" fill="currentColor" fill-opacity="0.1"/><path d="M12.8 6.2 8.7 12.6h3.1l-.6 5.2 4.1-6.6h-3.1l.6-5Z" fill="currentColor" stroke="none"/></svg>`,
   // Memory that forgets → a memory chip wiped clean
-  wipe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="1.5"/><path d="M9.5 3.5v3M12 3.5v3M14.5 3.5v3M9.5 17.5v3M12 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 12h3M3.5 14.5h3M17.5 9.5h3M17.5 12h3M17.5 14.5h3"/><path d="m12 9.2.85 1.95L14.8 12l-1.95.85L12 14.8l-.85-1.95L9.2 12l1.95-.85Z"/></svg>`,
+  wipe: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="6.5" width="11" height="11" rx="2" fill="currentColor" fill-opacity="0.1"/><path d="M9.5 3.5v3M14.5 3.5v3M9.5 17.5v3M14.5 17.5v3M3.5 9.5h3M3.5 14.5h3M17.5 9.5h3M17.5 14.5h3"/><path d="m12 9 .8 2.2 2.2.8-2.2.8L12 15l-.8-2.2L9 12l2.2-.8Z" fill="currentColor" stroke="none"/></svg>`,
   // Portable .ctnr format → a document you can export/carry
-  file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 2.5H7A1.5 1.5 0 0 0 5.5 4v16A1.5 1.5 0 0 0 7 21.5h10a1.5 1.5 0 0 0 1.5-1.5V7.5L13.5 2.5Z"/><path d="M13.5 2.5V7.5h5"/><path d="M12 18.5v-6m-2.3 2.3L12 12.2l2.3 2.6"/></svg>`,
+  file: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M13.5 2.8H7.2A1.7 1.7 0 0 0 5.5 4.5v15A1.7 1.7 0 0 0 7.2 21.2h9.6a1.7 1.7 0 0 0 1.7-1.7V7.5L13.5 2.8Z" fill="currentColor" fill-opacity="0.1"/><path d="M13.5 2.8V7.5h4.8"/><path d="M12 18.2v-5.8m-2.4 2.3L12 12.1l2.4 2.6"/></svg>`,
   // 100% offline → no cloud
-  offline: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.2 18.5h9a3.6 3.6 0 0 0 .5-7.16 5.2 5.2 0 0 0-8.7-2.86"/><path d="M7.2 18.5A3.6 3.6 0 0 1 6 11.6"/><path d="M3.5 3.5 20.5 20.5"/></svg>`,
+  offline: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M7.5 18.3h8.6a3.6 3.6 0 0 0 .5-7.15 5.2 5.2 0 0 0-9.5-1.1A3.7 3.7 0 0 0 7.5 18.3Z" fill="currentColor" fill-opacity="0.1"/><path d="M3.9 3.9 20.1 20.1"/></svg>`,
   windows: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M3 5.4 10.5 4.4v7.1H3zM10.5 12.5v7.1L3 18.6v-6.1zM11.6 4.3 21 3v8.5h-9.4zM21 12.5V21l-9.4-1.3v-7.2z"/></svg>`,
   apple: `<svg viewBox="0 0 24 24" fill="currentColor"><path d="M16.5 12.8c0-2.3 1.9-3.4 2-3.5-1.1-1.6-2.8-1.8-3.4-1.8-1.4-.1-2.8.9-3.5.9s-1.8-.8-3-.8c-1.5 0-2.9.9-3.7 2.3-1.6 2.7-.4 6.8 1.1 9 .7 1.1 1.6 2.3 2.8 2.2 1.1-.1 1.5-.7 2.9-.7s1.7.7 2.9.7 2-1.1 2.7-2.1c.8-1.2 1.2-2.4 1.2-2.4s-2.3-.9-2.3-3.5zM14.3 5.9c.6-.8 1-1.8.9-2.9-.9 0-2 .6-2.6 1.3-.6.7-1.1 1.7-.9 2.7 1 .1 2-.4 2.6-1.1z"/></svg>`,
   linux: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M9 3.5c-1 1-1 3-1 5 0 2-1.5 3.5-2.5 5.5C4.5 16 4 18 5 19.5c.7 1 2 1 2.5 0M15 3.5c1 1 1 3 1 5 0 2 1.5 3.5 2.5 5.5 1 2 1.5 4 .5 5.5-.7 1-2 1-2.5 0"/><path d="M9 8.5h.01M15 8.5h.01"/><path d="M10 11c.6.6 3.4.6 4 0"/><path d="M7.5 19.5c1.5 1.5 7.5 1.5 9 0"/></svg>`,
@@ -128,7 +130,10 @@ const jsonLd = {
     <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={ogImage} />
 
-    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32.png" />
+    <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16.png" />
+    <link rel="icon" href="/favicon.ico" sizes="any" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
@@ -303,16 +308,16 @@ const jsonLd = {
             <p>A <code>.ctnr</code> sealed on Linux opens, byte-for-byte, on your phone. Builds land here as each platform ships — grab the source any time.</p>
           </div>
           <div class="dlgrid">
-            {/* TODO(forked.online): replace each href with the platform's release-asset URL and drop the `soon` badge */}
             {downloads.map((d) => (
-              <a class="dl reveal" href={d.href} data-os={d.os.toLowerCase()} aria-label={`Download Cryptainer for ${d.os} (link coming soon)`}>
+              <a class="dl reveal" href={d.href} rel="noopener" data-os={d.os.toLowerCase()}
+                 aria-label={d.soon ? `${d.os} build — coming soon` : `Download Cryptainer for ${d.os}`}>
                 <span class="dl__icon" set:html={icon(d.i)} />
                 <span class="dl__meta"><b>{d.os}</b><span>{d.fmt}</span></span>
                 {d.soon ? <span class="dl__badge">Soon</span> : <span class="dl__go" set:html={icon("download")} />}
               </a>
             ))}
           </div>
-          <p class="download__note reveal">Prefer to build it yourself? <a href={`${REPO}#quick-start`} rel="noopener">Compile from source →</a></p>
+          <p class="download__note reveal">Need the <a href={`${REPO}/releases/latest`} rel="noopener">.deb or other builds</a>, or want to <a href={`${REPO}#quick-start`} rel="noopener">compile from source</a>?</p>
         </div>
       </section>
 
