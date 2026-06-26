@@ -172,6 +172,7 @@ pub async fn create_container(
         Err(e)
     })?;
 
+    record_audit(&pool, "create", Some(&meta.id), Some(&meta.name), None);
     drop(password);
     Ok(meta)
 }
@@ -198,7 +199,11 @@ pub async fn unlock_container(
     }
 
     if meta.format_version == 2 {
-        return unlock_v2(&container_id, &password, &meta, &blob, sessions_v2);
+        let result = unlock_v2(&container_id, &password, &meta, &blob, sessions_v2);
+        if result.is_ok() {
+            record_audit(&pool, "unlock", Some(&container_id), Some(&meta.name), None);
+        }
+        return result;
     }
 
     // v1 detected — auto-migrate to v2
@@ -219,6 +224,7 @@ pub async fn unlock_container(
         payload.files.iter().map(|f| f.size).sum(), &blob_sha256).await?;
 
     let session = build_v2_session(&password, &meta, &new_blob)?;
+    record_audit(&pool, "unlock", Some(&container_id), Some(&meta.name), None);
     sessions_v2.set(container_id, session);
 
     Ok(file_list)
@@ -559,6 +565,8 @@ async fn save_edits_v1(
 
     drop(password);
     let updated_meta = storage::get_container(&pool, &container_id).await?;
+    let removed_json = serde_json::json!({ "removed": file_ids_to_remove }).to_string();
+    record_audit(&pool, "edit", Some(&container_id), Some(&meta.name), Some(&removed_json));
     Ok(updated_meta)
 }
 
@@ -688,6 +696,7 @@ async fn save_edits_v2(
     }
 
     let updated_meta = storage::get_container(&pool, &container_id).await?;
+    record_audit(&pool, "edit", Some(&container_id), Some(&updated_meta.name), None);
     Ok(updated_meta)
 }
 
@@ -731,6 +740,7 @@ pub async fn delete_container(
     }
     sessions.lock(&container_id);
     sessions_v2.lock(&container_id);
+    record_audit(&pool, "delete", Some(&container_id), Some(&meta.name), None);
     Ok(())
 }
 
@@ -740,9 +750,11 @@ pub async fn lock_container(
     container_id: String,
     sessions: State<'_, SessionStore>,
     sessions_v2: State<'_, SessionStoreV2>,
+    pool: State<'_, sqlx::SqlitePool>,
 ) -> std::result::Result<(), CryptoError> {
     sessions.lock(&container_id);
     sessions_v2.lock(&container_id);
+    record_audit(&pool, "lock", Some(&container_id), None, None);
     Ok(())
 }
 
@@ -764,6 +776,8 @@ pub async fn export_container(
     let blob = std::fs::read(&meta.blob_path)?;
     let ctnr_bytes = export::serialize(&meta, &blob)?;
     std::fs::write(&dest_path, ctnr_bytes)?;
+    let details = serde_json::json!({ "dest_path": &dest_path }).to_string();
+    record_audit(&pool, "export", Some(&container_id), Some(&meta.name), Some(&details));
     Ok(())
 }
 
@@ -827,6 +841,8 @@ pub async fn import_container(
         Err(e)
     })?;
 
+    let details = serde_json::json!({ "src_path": &src_path }).to_string();
+    record_audit(&pool, "import", Some(&meta.id), Some(&meta.name), Some(&details));
     Ok(meta)
 }
 
@@ -881,6 +897,7 @@ pub async fn download_files(
     file_ids: Vec<String>,
     dest_dir: String,
     sessions_v2: State<'_, SessionStoreV2>,
+    pool: State<'_, sqlx::SqlitePool>,
 ) -> std::result::Result<Vec<vault::DownloadResult>, CryptoError> {
     let dest = std::path::PathBuf::from(&dest_dir);
     std::fs::create_dir_all(&dest)?;
@@ -942,5 +959,51 @@ pub async fn download_files(
         }
     }
 
+    let container_name = {
+        let store = sessions_v2.0.lock().unwrap();
+        store.get(&container_id).map(|s| {
+            let meta = &s.metadata;
+            meta.files.first().map(|f| f.name.clone()).unwrap_or_default()
+        }).unwrap_or_default()
+    };
+    let details = serde_json::json!({"files": file_ids.len(), "dest_dir": &dest_dir }).to_string();
+    record_audit(&pool, "download", Some(&container_id), Some(&container_name), Some(&details));
     Ok(results)
+}
+
+/// Best-effort audit logging helper. Never propagates errors to the caller.
+fn record_audit(
+    pool: &sqlx::SqlitePool,
+    action: &str,
+    container_id: Option<&str>,
+    container_name: Option<&str>,
+    details: Option<&str>,
+) {
+    tauri::async_runtime::spawn({
+        let pool = pool.clone();
+        let action = action.to_string();
+        let container_id = container_id.map(|s| s.to_string());
+        let container_name = container_name.map(|s| s.to_string());
+        let details = details.map(|s| s.to_string());
+        async move {
+            if let Err(e) = storage::insert_audit_event(
+                &pool, &action,
+                container_id.as_deref(),
+                container_name.as_deref(),
+                details.as_deref(),
+            ).await {
+                eprintln!("audit log failed: {e}");
+            }
+        }
+    });
+}
+
+/// List audit events, newest first. Defaults to 200, max 1000.
+#[tauri::command]
+pub async fn list_audit_events(
+    limit: Option<u32>,
+    pool: State<'_, sqlx::SqlitePool>,
+) -> std::result::Result<Vec<vault::AuditEvent>, CryptoError> {
+    let limit = limit.unwrap_or(200).min(1000);
+    storage::list_audit_events(&pool, limit).await
 }
