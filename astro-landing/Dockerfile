@@ -13,5 +13,6 @@ RUN rm -f /etc/nginx/conf.d/default.conf
 COPY nginx.conf /etc/nginx/conf.d/cryptainer.conf
 COPY --from=build /app/dist /usr/share/nginx/html
 EXPOSE 80
-HEALTHCHECK --interval=30s --timeout=3s --start-period=5s \
-  CMD wget -qO- http://localhost/ >/dev/null 2>&1 || exit 1
+# No HEALTHCHECK: under Docker Swarm (Dokploy) a failing container healthcheck
+# gets the task killed and rescheduled. nginx serving static files needs none —
+# the restart policy covers an actual crash. Re-add a real check later if wanted.
