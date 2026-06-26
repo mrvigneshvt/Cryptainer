@@ -60,6 +60,12 @@ impl SessionStore {
     }
 }
 
+impl Default for SessionStore {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 // ── V2 Session with LRU Cache ──────────────────────────────────────────────
 
 use lru::LruCache;
@@ -197,6 +203,12 @@ impl SessionStoreV2 {
         for (_, session) in sessions.drain() {
             session.lock();
         }
+    }
+}
+
+impl Default for SessionStoreV2 {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

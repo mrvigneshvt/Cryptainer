@@ -106,7 +106,7 @@ pub async fn create_container(
 
     for f in &input.files {
         let sha256 = crypto::sha256_hex(&f.data);
-        let (encrypted, nonce) = crypto::encrypt_section(&f.data, &*key)?;
+        let (encrypted, nonce) = crypto::encrypt_section(&f.data, &key)?;
         files_meta.push(FileMetadata {
             id: Uuid::new_v4().to_string(),
             name: f.name.clone(),
@@ -143,7 +143,7 @@ pub async fn create_container(
 
     // 6. Write blob to disk
     let blobs_dir = app.path().app_data_dir()
-        .map_err(|e| CryptoError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
+        .map_err(|e| CryptoError::Io(std::io::Error::other(e.to_string())))?
         .join("blobs");
     std::fs::create_dir_all(&blobs_dir)?;
     let blob_path = blobs_dir.join(format!("{}.enc", id));
@@ -167,9 +167,8 @@ pub async fn create_container(
         format_version: 2,
     };
 
-    storage::insert_container(&pool, &meta).await.or_else(|e| {
+    storage::insert_container(&pool, &meta).await.inspect_err(|_| {
         let _ = std::fs::remove_file(&blob_path);
-        Err(e)
     })?;
 
     record_audit(&pool, "create", Some(&meta.id), Some(&meta.name), None);
@@ -235,23 +234,40 @@ fn build_v2_session(
     meta: &ContainerMeta,
     blob: &[u8],
 ) -> std::result::Result<SessionV2, CryptoError> {
-    let salt: [u8; SALT_LEN] = blob[..SALT_LEN].try_into().unwrap();
+    if blob.len() < SALT_LEN {
+        return Err(CryptoError::InvalidFormat("blob too short for salt".into()));
+    }
+    let salt: [u8; SALT_LEN] = blob[..SALT_LEN].try_into()
+        .map_err(|_| CryptoError::InvalidFormat("blob too short for salt".into()))?;
     let key = crypto::derive_key(password, &salt, &meta.kdf_params)?;
 
     let meta_len_offset = SALT_LEN;
+    let end = meta_len_offset + 4;
+    if blob.len() < end {
+        return Err(CryptoError::InvalidFormat("blob too short for metadata length".into()));
+    }
     let meta_len = u32::from_le_bytes(
-        blob[meta_len_offset..meta_len_offset + 4].try_into().unwrap()
+        blob[meta_len_offset..end].try_into()
+            .map_err(|_| CryptoError::InvalidFormat("blob too short for metadata length".into()))?
     ) as usize;
 
     let meta_nonce_offset = meta_len_offset + 4;
-    let meta_nonce: [u8; crypto::NONCE_LEN] = blob[meta_nonce_offset..meta_nonce_offset + crypto::NONCE_LEN]
-        .try_into().unwrap();
+    let end = meta_nonce_offset + crypto::NONCE_LEN;
+    if blob.len() < end {
+        return Err(CryptoError::InvalidFormat("blob too short for metadata nonce".into()));
+    }
+    let meta_nonce: [u8; crypto::NONCE_LEN] = blob[meta_nonce_offset..end]
+        .try_into()
+        .map_err(|_| CryptoError::InvalidFormat("blob too short for metadata nonce".into()))?;
 
     let meta_ct_offset = meta_nonce_offset + crypto::NONCE_LEN;
     let meta_ct_end = meta_ct_offset + meta_len;
+    if meta_ct_end > blob.len() {
+        return Err(CryptoError::InvalidFormat("metadata section exceeds blob".into()));
+    }
     let metadata_ciphertext = &blob[meta_ct_offset..meta_ct_end];
 
-    let metadata_plaintext = crypto::decrypt_section(metadata_ciphertext, &*key, &meta_nonce)?;
+    let metadata_plaintext = crypto::decrypt_section(metadata_ciphertext, &key, &meta_nonce)?;
     let metadata: ContainerMetadataV2 = serde_json::from_slice(&metadata_plaintext)?;
 
     let mut key_arr = [0u8; 32];
@@ -284,7 +300,7 @@ fn convert_v1_to_v2(
 
     for f in &payload.files {
         let sha256 = crypto::sha256_hex(&f.data);
-        let (encrypted, nonce) = crypto::encrypt_section(&f.data, &*key)?;
+        let (encrypted, nonce) = crypto::encrypt_section(&f.data, &key)?;
         files_meta.push(FileMetadata {
             id: f.id.clone(),
             name: f.name.clone(),
@@ -347,7 +363,7 @@ fn unlock_v2(
     }
     let metadata_ciphertext = &blob[meta_ct_offset..meta_ct_end];
 
-    let metadata_plaintext = crypto::decrypt_section(metadata_ciphertext, &*key, &meta_nonce)?;
+    let metadata_plaintext = crypto::decrypt_section(metadata_ciphertext, &key, &meta_nonce)?;
     let metadata: ContainerMetadataV2 = serde_json::from_slice(&metadata_plaintext)?;
 
     let file_list: Vec<serde_json::Value> = metadata.files.iter().map(|f| {
@@ -366,6 +382,59 @@ fn unlock_v2(
     sessions_v2.set(container_id.to_string(), session);
 
     Ok(file_list)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::crypto::KdfParams;
+
+    fn dummy_meta() -> ContainerMeta {
+        ContainerMeta {
+            id: "test".into(),
+            name: "test".into(),
+            algo: "AES-GCM-256".into(),
+            kdf_params: KdfParams::argon2id_standard(),
+            hint: None,
+            tags: None,
+            file_count: 0,
+            total_size: 0,
+            blob_path: "/tmp/test.enc".into(),
+            blob_sha256: "0".repeat(64),
+            created_at: "2024-01-01T00:00:00Z".into(),
+            modified_at: "2024-01-01T00:00:00Z".into(),
+            format_version: 2,
+        }
+    }
+
+    /// A truncated blob shorter than even the salt should fail with an error,
+    /// NOT panic with an index-out-of-bounds or try_into unwrap.
+    #[test]
+    fn build_v2_session_truncated_blob_returns_err() {
+        let blob = vec![0u8; 4]; // too short for salt
+        let meta = dummy_meta();
+        let result = build_v2_session("password", &meta, &blob);
+        assert!(result.is_err(), "truncated blob should return Err, got Ok");
+    }
+
+    /// A blob that has the salt but is too short for the metadata header
+    /// (salt + 4 bytes for metadata_len) should also return Err.
+    #[test]
+    fn build_v2_session_short_header_returns_err() {
+        let blob = vec![0u8; SALT_LEN + 2]; // has salt, but not enough for metadata_len
+        let meta = dummy_meta();
+        let result = build_v2_session("password", &meta, &blob);
+        assert!(result.is_err(), "short-header blob should return Err, got Ok");
+    }
+
+    /// A blob that has salt + metadata_len but not metadata_nonce should return Err.
+    #[test]
+    fn build_v2_session_short_nonce_returns_err() {
+        let blob = vec![0u8; SALT_LEN + 4]; // salt + meta_len, but no nonce
+        let meta = dummy_meta();
+        let result = build_v2_session("password", &meta, &blob);
+        assert!(result.is_err(), "short nonce blob should return Err, got Ok");
+    }
 }
 
 /// Fetch the data bytes of a specific file in an unlocked container.
@@ -592,7 +661,7 @@ async fn save_edits_v2(
 
     // Verify password
     let verification_key = crypto::derive_key(&password, &salt, &meta.kdf_params)?;
-    if verification_key.as_ref() != &*key_arr {
+    if verification_key.as_ref() != key_arr.as_ref() {
         return Err(CryptoError::Decryption);
     }
     drop(verification_key);
@@ -601,7 +670,12 @@ async fn save_edits_v2(
     let blob = std::fs::read(&meta.blob_path)?;
 
     // Read metadata_len from blob header for read-side recovery
-    let meta_len_bytes: [u8; 4] = blob[SALT_LEN..SALT_LEN + 4].try_into().unwrap();
+    let end = SALT_LEN + 4;
+    if blob.len() < end {
+        return Err(CryptoError::InvalidFormat("save_edits_v2 blob too short for header".into()));
+    }
+    let meta_len_bytes: [u8; 4] = blob[SALT_LEN..end].try_into()
+        .map_err(|_| CryptoError::InvalidFormat("save_edits_v2 blob too short for header".into()))?;
     let blob_metadata_len = u32::from_le_bytes(meta_len_bytes) as usize;
 
     // Decrypt remaining files (not removed), re-encrypt with new nonces
@@ -626,7 +700,7 @@ async fn save_edits_v2(
         }
         let plaintext = crypto::decrypt_section(&blob[actual_offset..actual_offset + enc_len], &key_arr, &fm.data_nonce)?;
         let sha256 = crypto::sha256_hex(&plaintext);
-        let (new_enc, new_nonce) = crypto::encrypt_section(&plaintext, &*key_arr)?;
+        let (new_enc, new_nonce) = crypto::encrypt_section(&plaintext, &key_arr)?;
 
         new_meta.push(FileMetadata {
             id: fm.id.clone(),
@@ -646,7 +720,7 @@ async fn save_edits_v2(
     // Encrypt new files
     for f in &files_to_add {
         let sha256 = crypto::sha256_hex(&f.data);
-        let (enc, nonce) = crypto::encrypt_section(&f.data, &*key_arr)?;
+        let (enc, nonce) = crypto::encrypt_section(&f.data, &key_arr)?;
         new_meta.push(FileMetadata {
             id: Uuid::new_v4().to_string(),
             name: f.name.clone(),
@@ -811,7 +885,7 @@ pub async fn import_container(
 
     // Write blob to local blobs dir
     let blobs_dir = app.path().app_data_dir()
-        .map_err(|e| CryptoError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?
+        .map_err(|e| CryptoError::Io(std::io::Error::other(e.to_string())))?
         .join("blobs");
     std::fs::create_dir_all(&blobs_dir)?;
     let blob_path = blobs_dir.join(format!("{}.enc", header.id));
@@ -837,9 +911,8 @@ pub async fn import_container(
     };
 
     // Insert DB — clean up blob on failure to avoid orphaned files
-    storage::insert_container(&pool, &meta).await.or_else(|e| {
+    storage::insert_container(&pool, &meta).await.inspect_err(|_| {
         let _ = std::fs::remove_file(&blob_path);
-        Err(e)
     })?;
 
     let details = serde_json::json!({ "src_path": &src_path }).to_string();
