@@ -436,3 +436,62 @@ fn v2_recovers_wrong_offset_blob() {
         cumulative += correct_fm.size as usize + 16;
     }
 }
+
+/// Regression: removing a non-trailing file from a v2 container must NOT corrupt
+/// reads of subsequent retained files during save_edits_v2's offset-recovery loop.
+///
+/// Mirrors save_edits_v2's inner loop: `prior_sum` must advance for ALL files
+/// (including removed ones) because the on-disk blob still physically contains
+/// every file's ciphertext in sequence.
+#[test]
+fn v2_remove_non_trailing_file_keeps_remaining_decryptable() {
+    let params = test_params();
+    let password = "remove-offset-fix";
+    let file_data: Vec<(&str, &[u8])> = vec![
+        ("alpha.bin", &[0u8, 1, 2, 3]),
+        ("beta.jpg", &[255, 128, 64, 32, 0, 1]),
+        ("gamma.json", b"{\"key\": \"value\"}"),
+    ];
+
+    let (blob, metadata) = build_v2_blob(password, &params, &file_data);
+
+    let salt: [u8; 16] = blob[..16].try_into().unwrap();
+    let key = crypto::derive_key(password, &salt, &params).unwrap();
+    let blob_metadata_len = u32::from_le_bytes(blob[16..20].try_into().unwrap()) as usize;
+
+    // Remove the FIRST file — this is the case that triggers the offset bug
+    let removed_id = &metadata.files[0].id;
+
+    let mut prior_sum: usize = 0;
+    for fm in &metadata.files {
+        let enc_len = fm.size as usize + 16;
+        if fm.id == *removed_id {
+            prior_sum += enc_len;
+            continue;
+        }
+        let actual_offset = crypto::SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum;
+        assert!(
+            actual_offset + enc_len <= blob.len(),
+            "File {} offset {} out of bounds", fm.name, actual_offset,
+        );
+        let pt = crypto::decrypt_section(
+            &blob[actual_offset..actual_offset + enc_len],
+            &*key,
+            &fm.data_nonce,
+        ).unwrap_or_else(|_| {
+            panic!(
+                "Decryption FAILED for retained file {} at offset {} — \
+                 prior_sum likely skipped a removed file's ciphertext",
+                fm.name, actual_offset,
+            )
+        });
+        let hash = crypto::sha256_hex(&pt);
+        assert_eq!(hash, fm.sha256, "SHA-256 mismatch for {}", fm.name);
+        let expected_data = file_data.iter()
+            .find(|(n, _)| *n == fm.name.as_str())
+            .map(|(_, d)| *d)
+            .unwrap();
+        assert_eq!(pt, expected_data, "Data mismatch for {}", fm.name);
+        prior_sum += enc_len;
+    }
+}
