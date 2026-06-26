@@ -1,9 +1,7 @@
-/**
- * Detect whether the app is running inside the Tauri webview.
- * In a browser (dev mode), `window.__TAURI__` is undefined.
- */
+import { isTauri as _isTauri } from '@tauri-apps/api/core';
+
 export function isTauri(): boolean {
-  return typeof window !== 'undefined' && !!(window as any).__TAURI__;
+  return _isTauri();
 }
 
 import type { ContainerMeta } from '../types/vault';
