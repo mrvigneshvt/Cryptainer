@@ -1,15 +1,30 @@
 # Cryptainer
 
-> **Offline Encrypted Container Manager** — Securely store and manage your files with military-grade encryption
+> **Offline Encrypted Container Manager** — seal your files into portable, password-protected containers on your own device. AES-256-GCM + Argon2id, 100% offline, zero telemetry.
 
+### 🌐 [cryptainer.forked.online](https://cryptainer.forked.online) · ⬇️ [Download](#download) · 📖 [Docs](docs/)
+
+[![Website](https://img.shields.io/badge/Website-cryptainer.forked.online-00FF41?style=for-the-badge&logo=tauri&logoColor=black)](https://cryptainer.forked.online)
+[![Release](https://img.shields.io/github/v/release/mrvigneshvt/Cryptainer?style=for-the-badge&color=00FF41)](https://github.com/mrvigneshvt/Cryptainer/releases/latest)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=for-the-badge)](LICENSE)
 [![Rust](https://img.shields.io/badge/Rust-000000?style=for-the-badge&logo=rust&logoColor=white)](https://www.rust-lang.org/)
-[![React](https://img.shields.io/badge/React-20232A?style=for-the-badge&logo=react&logoColor=61DAFB)](https://reactjs.org/)
-[![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tauri](https://img.shields.io/badge/Tauri-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
+[![Tauri](https://img.shields.io/badge/Tauri%20v2-24C8D8?style=for-the-badge&logo=tauri&logoColor=white)](https://tauri.app/)
 
-<p align="center">
-  <img src="screenshot.png" alt="Cryptainer Screenshot" width="800">
-</p>
+## Download
+
+Cryptainer is free and open source. Grab a build, or [compile from source](#build-from-source).
+
+| Platform | Download | Notes |
+|---|---|---|
+| 🐧 **Linux** | [**AppImage**](https://github.com/mrvigneshvt/Cryptainer/releases/latest/download/Cryptainer-linux.AppImage) · [**.deb**](https://github.com/mrvigneshvt/Cryptainer/releases/latest/download/Cryptainer-linux-amd64.deb) | AppImage runs on any distro — no install |
+| 🤖 **Android** | [**APK**](https://github.com/mrvigneshvt/Cryptainer/releases/latest/download/Cryptainer-android.apk) | universal, signed release |
+| 🪟 Windows | _coming soon_ | [build from source](#build-from-source) |
+| 🍎 macOS | _coming soon_ | [build from source](#build-from-source) |
+| 📱 iOS | _coming soon_ | [build from source](#build-from-source) |
+
+> All releases & checksums → **[github.com/mrvigneshvt/Cryptainer/releases](https://github.com/mrvigneshvt/Cryptainer/releases/latest)**
+
+One Rust + Tauri core runs everywhere, so a `.ctnr` sealed on one platform opens, byte-for-byte, on another.
 
 ## Features
 
@@ -47,13 +62,13 @@
 - **⚙️ Settings**: Configure auto-lock timeout
 - **🔑 Password Hints**: Optional hints to help remember passwords
 - **💪 Password Strength**: Visual indicator for password strength
-- **🎨 Dark Theme**: Beautiful dark UI with accent colors
+- **🎨 Themes**: PRISM (light, frosted glass) and CIPHER (dark, terminal) — two complete design systems
 
 ## Tech Stack
 
 ### Backend
 - **Rust** — Systems programming with memory safety (edition 2021)
-- **Tauri v2** — Secure desktop app framework
+- **Tauri v2** — Secure cross-platform app framework (desktop + mobile)
 - **AES-256-GCM** — Authenticated encryption (via `aes-gcm` v0.10)
 - **Argon2id** — Memory-hard password hashing (via `argon2` v0.5)
 - **SQLite** — Local metadata storage (via `sqlx` v0.7)
@@ -68,14 +83,14 @@
 - **Prism.js** — Syntax highlighting (via `prism-react-renderer`)
 - **react-dropzone** — Drag-and-drop file selection
 
-## Quick Start
+## Build from source
 
 ### Prerequisites
 - [Node.js](https://nodejs.org/) (v18+)
 - [Rust](https://www.rust-lang.org/tools/install)
 - [Tauri CLI](https://tauri.app/v2/guides/getting-started/prerequisites)
 
-### Desktop (Linux/macOS/Windows)
+### Desktop (Linux / macOS / Windows)
 
 ```bash
 # Clone the repository
@@ -88,8 +103,18 @@ npm install
 # Run in development mode
 npm run tauri dev
 
-# Build for production
+# Build a release bundle (.AppImage, .deb, .dmg, .msi …)
 npm run tauri build
+```
+
+### Android
+
+```bash
+# One-time: initialise the Android project (needs Android SDK + NDK)
+npm run tauri android init
+
+# Build a signed release APK / AAB
+npm run tauri android build
 ```
 
 See [`docs/SETUP.md`](docs/SETUP.md) for detailed setup instructions and platform-specific dependencies.
@@ -207,12 +232,13 @@ See [`docs/SETUP.md`](docs/SETUP.md) for full development workflow and [`docs/CH
 
 ```
 cryptainer/
-├── docs/                      # Documentation
-├── src/                       # React frontend
-├── src-tauri/                 # Rust backend
-│   ├── src/                   # Rust source modules
-│   ├── tests/                 # Integration tests
-│   └── migrations/            # SQLite migrations
+├── astro-landing/            # Marketing site → cryptainer.forked.online
+├── docs/                     # Documentation
+├── src/                      # React frontend
+├── src-tauri/                # Rust backend
+│   ├── src/                  # Rust source modules
+│   ├── tests/                # Integration tests
+│   └── migrations/           # SQLite migrations
 ├── package.json              # npm dependencies
 └── vite.config.ts            # Vite configuration
 ```
@@ -243,4 +269,4 @@ MIT License — see [LICENSE](LICENSE) for details.
 
 **⚠️ Security Notice**: This is cryptographic software. While we follow best practices, you are responsible for your data. Always keep backups of important files and use strong, unique passwords.
 
-*Made with Rust + React + Tauri*
+*Made with Rust + Tauri · [cryptainer.forked.online](https://cryptainer.forked.online) · built by [forked.online](https://platform.forked.online)*
