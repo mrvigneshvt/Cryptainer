@@ -3,7 +3,8 @@
 //! This module defines the ContainerMeta struct (what lives in SQLite)
 //! and the ContainerPayload struct (what is encrypted inside the blob).
 
-use crate::crypto::KdfParams;
+use crate::crypto::{self, KdfParams, SALT_LEN};
+use crate::error::CryptoError;
 use serde::{Deserialize, Serialize};
 
 /// All metadata stored in plaintext in SQLite.
@@ -73,7 +74,87 @@ pub struct ChunkMetadata {
     pub size: u64,
 }
 
+/// A single audit log event returned by `list_audit_events`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AuditEvent {
+    pub id: String,
+    pub ts: String,
+    pub action: String,
+    pub container_id: Option<String>,
+    pub container_name: Option<String>,
+    pub details: Option<String>,
+}
+
+/// Per-file download result returned by the `download_files` command.
+/// Per-file errors surface via `error` without aborting the batch.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct DownloadResult {
+    pub file_id: String,
+    pub written_path: Option<String>,
+    pub bytes: u64,
+    pub error: Option<String>,
+}
+
 pub const VIDEO_CHUNK_SIZE: u64 = 2 * 1024 * 1024; // 2 MB
+
+/// Iteratively compute the v2 blob layout until the encrypted metadata length stabilises.
+///
+/// The JSON encoding of `FileMetadata::offset` changes size when offset values change
+/// (e.g. `0` vs `12345`), creating a circular dependency: metadata size affects file
+/// positions, which affect offset values, which change metadata size again. We resolve
+/// this by iterating: encrypt metadata → compute offsets → re-encrypt → compare length
+/// → repeat if different. Convergence typically takes 2–3 passes.
+///
+/// This is the SAME algorithm the integration test `build_v2_blob` uses; production code
+/// (`create_container`, `save_edits_v2`, `convert_v1_to_v2`) now calls this shared helper
+/// instead of duplicating a broken two-pass variant.
+///
+/// # Arguments
+/// * `key` — AES-256-GCM key
+/// * `files_meta` — file metadata; `offset` fields are updated in-place to final values
+/// * `encrypted_parts` — pre-encrypted file ciphertexts (same order as `files_meta`)
+///
+/// # Returns
+/// `(encrypted_metadata_bytes, metadata_nonce)` — the final stable encryption
+pub fn compute_v2_layout(
+    key: &[u8; 32],
+    files_meta: &mut [FileMetadata],
+    encrypted_parts: &[Vec<u8>],
+) -> std::result::Result<(Vec<u8>, [u8; 12]), CryptoError> {
+    let mut enc_meta_len = 0usize;
+    loop {
+        let meta = ContainerMetadataV2 {
+            version: 2,
+            files: files_meta.to_owned(),
+        };
+        let meta_json = serde_json::to_vec(&meta)?;
+        let (enc_meta, _) = crypto::encrypt_section(&meta_json, key)?;
+        let prev_len = enc_meta_len;
+        enc_meta_len = enc_meta.len();
+
+        // Compute offsets based on this encrypted metadata length
+        let meta_section_len = 4 + crypto::NONCE_LEN + enc_meta_len;
+        let mut offset = SALT_LEN + meta_section_len;
+        for (i, fm) in files_meta.iter_mut().enumerate() {
+            fm.offset = offset as u64;
+            offset += encrypted_parts[i].len();
+        }
+
+        if enc_meta_len == prev_len {
+            break;
+        }
+    }
+
+    // Final encryption with stable offsets
+    let meta = ContainerMetadataV2 {
+        version: 2,
+        files: files_meta.to_owned(),
+    };
+    let meta_json = serde_json::to_vec(&meta)?;
+    let (enc_meta, meta_nonce) = crypto::encrypt_section(&meta_json, key)?;
+
+    Ok((enc_meta, meta_nonce))
+}
 
 #[cfg(test)]
 mod tests {

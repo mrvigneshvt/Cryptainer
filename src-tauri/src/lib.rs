@@ -56,6 +56,8 @@ pub fn run() {
             commands::lock_container,
             commands::export_container,
             commands::import_container,
+            commands::download_files,
+            commands::list_audit_events,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Cryptainer");

@@ -52,6 +52,22 @@ export const DEFAULT_KDF_PARAMS: KdfParams = {
   parallelism: 1,
 };
 
+export interface AuditEvent {
+  id: string;
+  ts: string;
+  action: string;
+  container_id?: string;
+  container_name?: string;
+  details?: string;
+}
+
+export interface DownloadResult {
+  file_id: string;
+  written_path?: string;
+  bytes: number;
+  error?: string;
+}
+
 export const SECURITY_PRESETS = [
   { label: 'Fast (low-end device)',  params: { kdf: 'argon2id', memory_kb: 16384,  iterations: 1, parallelism: 1 } as KdfParams },
   { label: 'Standard (recommended)', params: { kdf: 'argon2id', memory_kb: 65536,  iterations: 2, parallelism: 1 } as KdfParams },
