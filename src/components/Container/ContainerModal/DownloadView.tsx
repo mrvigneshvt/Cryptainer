@@ -1,5 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
+import { ProgressBar } from '../../UI';
+import { useTauriProgress } from '../../../hooks/useTauriProgress';
 import { useVaultStore } from '../../../store/vaultStore';
 import { useMediaQuery } from '../../../hooks/useMediaQuery';
 import { formatBytes } from '../../../utils/format';
@@ -27,6 +29,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
   const [isDownloading, setIsDownloading] = useState(false);
   const [results, setResults] = useState<DownloadResult[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const { progress } = useTauriProgress(isDownloading);
 
   // On mobile, auto-fetch the downloads directory (no folder picker available)
   useEffect(() => {
@@ -173,6 +176,20 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
         </div>
       </div>
 
+      {/* Progress bar during download */}
+      {isDownloading && (
+        <ProgressBar
+          operation={progress?.operation ?? 'decrypt'}
+          current={progress?.current ?? 0}
+          total={progress?.total ?? files.length}
+          fileName={progress?.file_name ?? undefined}
+          bytesProcessed={progress?.bytes_processed}
+          bytesTotal={progress?.bytes_total}
+          message={progress?.message ?? 'Downloading…'}
+          indeterminate={!progress || progress.total === 0}
+        />
+      )}
+
       {/* Action buttons */}
       <div className="download-actions">
         <button
@@ -188,14 +205,14 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
             onClick={() => doDownload(false)}
             disabled={isDownloading || !destDir || selectedIds.size === 0}
           >
-            {isDownloading ? 'Downloading...' : `Download Selected (${selectedIds.size})`}
+            {isDownloading ? 'Downloading…' : `Download Selected (${selectedIds.size})`}
           </button>
           <button
             className="download-btn download-btn-accent"
             onClick={() => doDownload(true)}
             disabled={isDownloading || !destDir}
           >
-            {isDownloading ? 'Downloading...' : 'Download All'}
+            {isDownloading ? 'Downloading…' : 'Download All'}
           </button>
         </div>
       </div>

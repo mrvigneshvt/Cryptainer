@@ -650,6 +650,7 @@ pub async fn release_file_data(
 
 /// Save edits to an unlocked container (add/remove files) and re-encrypt.
 /// Supports both v1 (legacy single-encryption) and v2 (per-file encryption).
+#[allow(clippy::too_many_arguments)]
 #[tauri::command]
 pub async fn save_edits(
     app: AppHandle,
@@ -735,6 +736,7 @@ async fn save_edits_v1(
 }
 
 /// V2 save_edits — per-file encryption flow. Re-encrypts every file.
+#[allow(clippy::too_many_arguments)]
 async fn save_edits_v2(
     app: AppHandle,
     container_id: String,
