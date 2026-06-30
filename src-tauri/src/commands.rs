@@ -6,7 +6,7 @@
 //! SECURITY: Raw key material never crosses this boundary.
 //! Only plaintext metadata and already-encrypted blobs are transferred.
 
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use uuid::Uuid;
 use chrono::Utc;
 use std::path::PathBuf;
@@ -40,6 +40,25 @@ pub struct FileInput {
     pub name: String,
     pub mime: String,
     pub data: Vec<u8>,  // raw bytes from frontend
+}
+
+/// Progress payload emitted via Tauri events during crypto operations.
+/// Frontend listens to "cryptainer://progress" and renders a ProgressBar.
+#[derive(Clone, serde::Serialize)]
+pub struct ProgressPayload {
+    pub operation: String,
+    pub current: u64,
+    pub total: u64,
+    pub file_name: Option<String>,
+    pub bytes_processed: u64,
+    pub bytes_total: u64,
+    pub message: String,
+}
+
+/// Emit a progress event to the frontend.
+/// Uses the Tauri v2 `Emitter` trait on `AppHandle`.
+pub fn emit_progress(app: &AppHandle, payload: ProgressPayload) {
+    let _ = app.emit("cryptainer://progress", payload);
 }
 
 /// Helper: validate password minimum length.
@@ -95,16 +114,36 @@ pub async fn create_container(
     }
 
     // 1. Derive key
+    emit_progress(&app, ProgressPayload {
+        operation: "derive-key".into(),
+        current: 0,
+        total: 0,
+        file_name: None,
+        bytes_processed: 0,
+        bytes_total: 0,
+        message: "Deriving encryption key…".into(),
+    });
     let mut salt = [0u8; SALT_LEN];
     rand::rngs::OsRng.fill_bytes(&mut salt);
     let key = crypto::derive_key(&password, &salt, &input.kdf_params)?;
 
     // 2. Encrypt each file individually, collect metadata (offsets filled later)
     let total_size: u64 = input.files.iter().map(|f| f.data.len() as u64).sum();
+    let total_files = input.files.len() as u64;
     let mut files_meta: Vec<FileMetadata> = Vec::with_capacity(input.files.len());
     let mut encrypted_files: Vec<Vec<u8>> = Vec::with_capacity(input.files.len());
+    let mut cumulative_bytes: u64 = 0;
 
-    for f in &input.files {
+    for (i, f) in input.files.iter().enumerate() {
+        emit_progress(&app, ProgressPayload {
+            operation: "encrypt".into(),
+            current: i as u64,
+            total: total_files,
+            file_name: Some(f.name.clone()),
+            bytes_processed: cumulative_bytes,
+            bytes_total: total_size,
+            message: format!("Encrypting {} ({} / {})", f.name, i + 1, total_files),
+        });
         let sha256 = crypto::sha256_hex(&f.data);
         let (encrypted, nonce) = crypto::encrypt_section(&f.data, &key)?;
         files_meta.push(FileMetadata {
@@ -118,7 +157,19 @@ pub async fn create_container(
             chunks: None,
         });
         encrypted_files.push(encrypted);
+        cumulative_bytes += f.data.len() as u64;
     }
+
+    // Final encrypt progress (all files done)
+    emit_progress(&app, ProgressPayload {
+        operation: "encrypt".into(),
+        current: total_files,
+        total: total_files,
+        file_name: None,
+        bytes_processed: total_size,
+        bytes_total: total_size,
+        message: "Encryption complete".into(),
+    });
 
     // 3. Compute metadata offsets iteratively (shared helper, converges in 2-3 passes)
     let mut metadata_v2 = ContainerMetadataV2 { version: 2, files: files_meta };
@@ -141,7 +192,18 @@ pub async fn create_container(
 
     let blob_sha256 = crypto::sha256_hex(&blob);
 
-    // 6. Write blob to disk
+    // 6. Emit write-blob progress (indeterminate — writing to disk)
+    emit_progress(&app, ProgressPayload {
+        operation: "write-blob".into(),
+        current: 0,
+        total: 0,
+        file_name: None,
+        bytes_processed: blob.len() as u64,
+        bytes_total: blob.len() as u64,
+        message: "Writing encrypted blob to disk…".into(),
+    });
+
+    // 7. Write blob to disk
     let blobs_dir = app.path().app_data_dir()
         .map_err(|e| CryptoError::Io(std::io::Error::other(e.to_string())))?
         .join("blobs");
@@ -180,6 +242,7 @@ pub async fn create_container(
 /// V1 containers are automatically migrated to v2 on unlock.
 #[tauri::command]
 pub async fn unlock_container(
+    app: AppHandle,
     container_id: String,
     password: String,
     pool: State<'_, sqlx::SqlitePool>,
@@ -190,12 +253,34 @@ pub async fn unlock_container(
     let password = zeroize::Zeroizing::new(password);
 
     let meta = storage::get_container(&pool, &container_id).await?;
+
+    // Emit read-blob progress (indeterminate — reading from disk)
+    emit_progress(&app, ProgressPayload {
+        operation: "read-blob".into(),
+        current: 0,
+        total: 0,
+        file_name: None,
+        bytes_processed: 0,
+        bytes_total: 0,
+        message: "Reading encrypted container…".into(),
+    });
     let blob = std::fs::read(&meta.blob_path)?;
 
     let actual_sha256 = crypto::sha256_hex(&blob);
     if actual_sha256 != meta.blob_sha256 {
         return Err(CryptoError::IntegrityFailure);
     }
+
+    // Emit derive-key progress (indeterminate)
+    emit_progress(&app, ProgressPayload {
+        operation: "derive-key".into(),
+        current: 0,
+        total: 0,
+        file_name: None,
+        bytes_processed: blob.len() as u64,
+        bytes_total: blob.len() as u64,
+        message: "Deriving decryption key…".into(),
+    });
 
     if meta.format_version == 2 {
         let result = unlock_v2(&container_id, &password, &meta, &blob, sessions_v2);
@@ -206,6 +291,15 @@ pub async fn unlock_container(
     }
 
     // v1 detected — auto-migrate to v2
+    emit_progress(&app, ProgressPayload {
+        operation: "migrate".into(),
+        current: 0,
+        total: 0,
+        file_name: None,
+        bytes_processed: 0,
+        bytes_total: 0,
+        message: "Migrating v1 container to v2…".into(),
+    });
     let plaintext = crypto::decrypt(&blob, &password, &meta.kdf_params)?;
     let payload: ContainerPayload = serde_json::from_slice(&plaintext)?;
 
@@ -558,6 +652,7 @@ pub async fn release_file_data(
 /// Supports both v1 (legacy single-encryption) and v2 (per-file encryption).
 #[tauri::command]
 pub async fn save_edits(
+    app: AppHandle,
     container_id: String,
     password: String,
     files_to_add: Vec<FileInput>,
@@ -569,7 +664,7 @@ pub async fn save_edits(
     let meta = storage::get_container(&pool, &container_id).await?;
 
     if meta.format_version == 2 {
-        save_edits_v2(container_id, password, files_to_add, file_ids_to_remove, meta, pool, sessions_v2).await
+        save_edits_v2(app, container_id, password, files_to_add, file_ids_to_remove, meta, pool, sessions_v2).await
     } else {
         save_edits_v1(container_id, password, files_to_add, file_ids_to_remove, meta, pool, sessions).await
     }
@@ -641,6 +736,7 @@ async fn save_edits_v1(
 
 /// V2 save_edits — per-file encryption flow. Re-encrypts every file.
 async fn save_edits_v2(
+    app: AppHandle,
     container_id: String,
     password: String,
     files_to_add: Vec<FileInput>,
@@ -649,6 +745,17 @@ async fn save_edits_v2(
     pool: State<'_, sqlx::SqlitePool>,
     sessions_v2: State<'_, SessionStoreV2>,
 ) -> std::result::Result<ContainerMeta, CryptoError> {
+    // Emit derive-key verify progress (indeterminate)
+    emit_progress(&app, ProgressPayload {
+        operation: "derive-key".into(),
+        current: 0,
+        total: 0,
+        file_name: None,
+        bytes_processed: 0,
+        bytes_total: 0,
+        message: "Verifying encryption key…".into(),
+    });
+
     // Lock session to extract key, salt, and metadata
     let (key_arr, salt, old_metadata) = {
         let store = sessions_v2.0.lock().unwrap();
@@ -678,6 +785,10 @@ async fn save_edits_v2(
         .map_err(|_| CryptoError::InvalidFormat("save_edits_v2 blob too short for header".into()))?;
     let blob_metadata_len = u32::from_le_bytes(meta_len_bytes) as usize;
 
+    // Compute total files for progress tracking (retained + new)
+    let retained_count = old_metadata.files.iter().filter(|fm| !file_ids_to_remove.contains(&fm.id)).count();
+    let total_ops = (retained_count + files_to_add.len()) as u64;
+
     // Decrypt remaining files (not removed), re-encrypt with new nonces
     // Uses read-side offset recovery (ignores stored fm.offset, computes from
     // blob header metadata_len + cumulative {size+16} sums) so that containers
@@ -686,6 +797,7 @@ async fn save_edits_v2(
     let mut encrypted_parts: Vec<Vec<u8>> = Vec::new();
     let mut total_size: u64 = 0;
     let mut prior_sum: usize = 0; // cumulative encrypted size of prior retained files
+    let mut progress_idx: u64 = 0;
 
     for fm in &old_metadata.files {
         let enc_len = fm.size as usize + 16;
@@ -693,6 +805,15 @@ async fn save_edits_v2(
             prior_sum += enc_len;
             continue;
         }
+        emit_progress(&app, ProgressPayload {
+            operation: "encrypt".into(),
+            current: progress_idx,
+            total: total_ops,
+            file_name: Some(fm.name.clone()),
+            bytes_processed: total_size,
+            bytes_total: 0, // unknown total bytes during re-encrypt
+            message: format!("Re-encrypting {} ({} / {})", fm.name, progress_idx + 1, total_ops),
+        });
         // Read-side recovery: compute actual offset from blob header metadata_len
         let actual_offset = SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum;
         if actual_offset + enc_len > blob.len() {
@@ -715,10 +836,20 @@ async fn save_edits_v2(
         total_size += fm.size;
         encrypted_parts.push(new_enc);
         prior_sum += enc_len;
+        progress_idx += 1;
     }
 
     // Encrypt new files
     for f in &files_to_add {
+        emit_progress(&app, ProgressPayload {
+            operation: "encrypt".into(),
+            current: progress_idx,
+            total: total_ops,
+            file_name: Some(f.name.clone()),
+            bytes_processed: total_size,
+            bytes_total: 0,
+            message: format!("Encrypting {} ({} / {})", f.name, progress_idx + 1, total_ops),
+        });
         let sha256 = crypto::sha256_hex(&f.data);
         let (enc, nonce) = crypto::encrypt_section(&f.data, &key_arr)?;
         new_meta.push(FileMetadata {
@@ -733,6 +864,7 @@ async fn save_edits_v2(
         });
         total_size += f.data.len() as u64;
         encrypted_parts.push(enc);
+        progress_idx += 1;
     }
 
     // Compute offsets iteratively using shared helper
@@ -754,6 +886,17 @@ async fn save_edits_v2(
     }
 
     let blob_sha256 = crypto::sha256_hex(&new_blob);
+
+    // Emit write-blob progress
+    emit_progress(&app, ProgressPayload {
+        operation: "write-blob".into(),
+        current: 0,
+        total: 0,
+        file_name: None,
+        bytes_processed: new_blob.len() as u64,
+        bytes_total: new_blob.len() as u64,
+        message: "Writing updated blob to disk…".into(),
+    });
 
     // Atomic write
     atomic_write_blob(&meta.blob_path, &new_blob)?;
@@ -979,6 +1122,7 @@ fn resolve_collision_path(dest_dir: &std::path::Path, name: &str) -> std::path::
 /// failed file NEVER aborts the whole batch.
 #[tauri::command]
 pub async fn download_files(
+    app: AppHandle,
     container_id: String,
     file_ids: Vec<String>,
     dest_dir: String,
@@ -988,11 +1132,49 @@ pub async fn download_files(
     let dest = std::path::PathBuf::from(&dest_dir);
     std::fs::create_dir_all(&dest)?;
 
-    let mut results = Vec::with_capacity(file_ids.len());
+    let total_files = file_ids.len() as u64;
 
-    for file_id in &file_ids {
+    // Compute total bytes from session metadata
+    let total_bytes: u64 = {
+        let store = sessions_v2.0.lock().unwrap();
+        store.get(&container_id)
+            .map(|session| {
+                file_ids.iter().filter_map(|id| {
+                    session.metadata.files.iter()
+                        .find(|fm| fm.id == *id)
+                        .map(|fm| fm.size)
+                }).sum()
+            })
+            .unwrap_or(0)
+    };
+
+    let mut results = Vec::with_capacity(file_ids.len());
+    let mut cumulative_bytes: u64 = 0;
+
+    for (i, file_id) in file_ids.iter().enumerate() {
+        // Emit decrypt progress before processing this file
+        let file_name_hint = {
+            let store = sessions_v2.0.lock().unwrap();
+            store.get(&container_id)
+                .and_then(|session| {
+                    session.metadata.files.iter()
+                        .find(|fm| fm.id == *file_id)
+                        .map(|fm| fm.name.clone())
+                })
+                .unwrap_or_else(|| file_id.clone())
+        };
+        emit_progress(&app, ProgressPayload {
+            operation: "decrypt".into(),
+            current: i as u64,
+            total: total_files,
+            file_name: Some(file_name_hint.clone()),
+            bytes_processed: cumulative_bytes,
+            bytes_total: total_bytes,
+            message: format!("Decrypting {} ({} / {})", file_name_hint, i + 1, total_files),
+        });
         match get_file_data_v2(&container_id, file_id, &sessions_v2) {
             Ok(Some(data)) => {
+                cumulative_bytes += data.len() as u64;
                 // Look up the file name from session metadata
                 let file_name = {
                     let store = sessions_v2.0.lock().unwrap();
@@ -1052,6 +1234,18 @@ pub async fn download_files(
         .unwrap_or_default();
     let details = serde_json::json!({"files": file_ids.len(), "dest_dir": &dest_dir }).to_string();
     record_audit(&pool, "download", Some(&container_id), Some(&container_name), Some(&details));
+
+    // Final progress: download complete
+    emit_progress(&app, ProgressPayload {
+        operation: "decrypt".into(),
+        current: total_files,
+        total: total_files,
+        file_name: None,
+        bytes_processed: total_bytes,
+        bytes_total: total_bytes,
+        message: "Download complete".into(),
+    });
+
     Ok(results)
 }
 
