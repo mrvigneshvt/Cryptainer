@@ -1,0 +1,200 @@
+/* =============================================================================
+   ProgressBar — Reusable progress bar for crypto operations
+   Theme-aware via CSS custom properties (PRISM + CIPHER).
+   Responsive: hides bytes row on narrow screens.
+   Respects prefers-reduced-motion.
+   ============================================================================= */
+
+.progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  color: var(--text-secondary);
+}
+
+/* ── Header row ──────────────────────────────────────────────────────────── */
+
+.progress-header {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.progress-icon {
+  font-size: 1rem;
+  line-height: 1;
+}
+
+.progress-verb {
+  text-transform: capitalize;
+}
+
+/* ── File name row ───────────────────────────────────────────────────────── */
+
+.progress-file {
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ── Message row ─────────────────────────────────────────────────────────── */
+
+.progress-message {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+  font-style: italic;
+}
+
+/* ── Error state ─────────────────────────────────────────────────────────── */
+
+.progress-error .progress-track {
+  border-color: var(--error);
+}
+
+.progress-error .progress-fill {
+  background: var(--error);
+}
+
+.progress-error-msg {
+  font-size: 0.75rem;
+  color: var(--error);
+  font-weight: 500;
+}
+
+.progress-error .progress-shimmer {
+  background: linear-gradient(
+    90deg,
+    var(--error-dim) 25%,
+    var(--error) 50%,
+    var(--error-dim) 75%
+  );
+  background-size: 200% 100%;
+}
+
+/* ── Bar track ───────────────────────────────────────────────────────────── */
+
+.progress-track {
+  position: relative;
+  width: 100%;
+  height: 0.5rem;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  background: var(--gradient-accent);
+  border-radius: var(--radius-pill);
+  transition: width var(--transition-normal);
+}
+
+/* Shimmer animation for indeterminate mode */
+.progress-shimmer {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    var(--accent-dim) 25%,
+    var(--accent) 50%,
+    var(--accent-dim) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius-pill);
+  animation: progress-shimmer 1.5s ease-in-out infinite;
+}
+
+@keyframes progress-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+/* ── Footer row ──────────────────────────────────────────────────────────── */
+
+.progress-footer {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.progress-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-percent {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+  color: var(--text-secondary);
+}
+
+/* ── Bytes/speed/ETA row ─────────────────────────────────────────────────── */
+
+.progress-bytes {
+  font-size: 0.6875rem;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.progress-speed {
+  color: var(--text-secondary);
+}
+
+.progress-eta {
+  color: var(--text-muted);
+}
+
+/* ── Compact mode ────────────────────────────────────────────────────────── */
+
+.progress-compact .progress-track {
+  height: 0.375rem;
+}
+
+.progress-compact .progress-file {
+  display: none;
+}
+
+.progress-compact .progress-bytes {
+  display: none;
+}
+
+.progress-compact .progress-message {
+  display: none;
+}
+
+/* ── Responsive: hide bytes/speed row on narrow screens ──────────────────── */
+
+@media (max-width: 480px) {
+  .progress-bytes {
+    display: none;
+  }
+}
+
+/* ── Reduced motion ──────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-fill {
+    transition: none;
+  }
+
+  .progress-shimmer {
+    animation: none;
+    background: var(--accent-dim);
+  }
+}

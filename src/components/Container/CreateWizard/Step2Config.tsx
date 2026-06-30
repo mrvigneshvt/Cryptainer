@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { PasswordStrength } from '../../UI';
+import { PasswordStrength, ProgressBar } from '../../UI';
+import { useTauriProgress } from '../../../hooks/useTauriProgress';
 import { SECURITY_PRESETS, type KdfParams } from '../../../types/vault';
 import './Step2Config.css';
 
@@ -18,6 +19,7 @@ export const Step2Config: React.FC<Step2ConfigProps> = ({
   onCreate,
   isLoading = false,
 }) => {
+  const { progress } = useTauriProgress(isLoading);
   const [selectedPreset, setSelectedPreset] = useState(1); // Standard
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -188,10 +190,16 @@ export const Step2Config: React.FC<Step2ConfigProps> = ({
           disabled={isLoading}
         >
           {isLoading ? (
-            <>
-              <span className="step2-spinner" />
-              Encrypting…
-            </>
+            <ProgressBar
+              operation={progress?.operation ?? 'encrypt'}
+              current={progress?.current ?? 0}
+              total={progress?.total ?? 0}
+              fileName={progress?.file_name ?? undefined}
+              bytesProcessed={progress?.bytes_processed}
+              bytesTotal={progress?.bytes_total}
+              message={progress?.message ?? undefined}
+              indeterminate={progress ? progress.total === 0 : true}
+            />
           ) : (
             <>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
