@@ -598,7 +598,7 @@ fn get_file_data_v2(
         // Compute cumulative encrypted size of prior files for read-side recovery
         let prior_sum: usize = session.metadata.files.iter()
             .take(idx)
-            .map(|f| f.size as usize + 16) // plaintext + GCM tag
+            .map(vault::file_encrypted_len)
             .sum();
 
         let mut key = [0u8; 32];
@@ -620,12 +620,12 @@ fn get_file_data_v2(
     let actual_offset = (SALT_LEN + 4 + crypto::NONCE_LEN + metadata_len + prior_sum) as u64;
 
     // Seek + read from blob at the recovered offset
-    let enc_len = fm.size as usize + 16; // +GCM tag
+    let enc_len = vault::file_encrypted_len(&fm);
     let mut encrypted = vec![0u8; enc_len];
     file.seek(SeekFrom::Start(actual_offset))?;
     file.read_exact(&mut encrypted)?;
 
-    let plaintext = crypto::decrypt_section(&encrypted, &key_arr, &fm.data_nonce)?;
+    let plaintext = vault::decrypt_file(&encrypted, &fm, &key_arr)?;
 
     // Verify SHA-256
     let hash = crypto::sha256_hex(&plaintext);

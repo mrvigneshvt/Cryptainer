@@ -774,3 +774,115 @@ fn save_edits_v2_streaming_roundtrips() {
 
     std::fs::remove_dir_all(&dir).ok();
 }
+
+/// Backward-compatible reads (Task 6): a v2 container with a MIX of legacy
+/// whole-file entries and new chunked entries must recover both correctly
+/// using the same offset math `get_file_data_v2` uses: `prior_sum` computed
+/// via `vault::file_encrypted_len` (not `fm.size + 16`), and the section
+/// decrypted via `vault::decrypt_file` (not `crypto::decrypt_section` with
+/// `fm.data_nonce`, which is meaningless for a chunked file).
+///
+/// file0 is WHOLE-FILE legacy: encrypted with `crypto::encrypt_section` over
+/// the whole plaintext, `chunks: None`, a real `data_nonce`.
+/// file1 is CHUNKED: encrypted with `vault::encrypt_file_chunked`,
+/// `chunks: Some`, `data_nonce: [0; 12]` (unused for chunked files).
+///
+/// Both files are recovered and compared to their originals — file1 proves
+/// a chunked file is read correctly when it follows a whole-file prior
+/// (the mixed-layout case), file0 proves whole-file legacy reads still work.
+#[test]
+fn get_file_data_v2_reads_chunked_after_prior_whole() {
+    use std::io::Write;
+
+    // Fixed key — exercises blob assembly + read-side recovery, not the KDF.
+    let key = [0x7Bu8; 32];
+    let chunk_size = 512usize;
+
+    let dir = std::env::temp_dir().join(format!(
+        "ctnr_read_mixed_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // ── file0: WHOLE-FILE legacy ─────────────────────────────────────────────
+    let file0_bytes: Vec<u8> = (0..300u32).map(|i| (i % 250) as u8).collect();
+    let file0_sha256 = crypto::sha256_hex(&file0_bytes);
+    let (file0_enc, file0_nonce) = crypto::encrypt_section(&file0_bytes, &key).unwrap();
+    let file0_id = uuid::Uuid::new_v4().to_string();
+    let mut files_meta = vec![FileMetadata {
+        id: file0_id.clone(),
+        name: "legacy.bin".into(),
+        mime: "application/octet-stream".into(),
+        size: file0_bytes.len() as u64,
+        offset: 0,
+        data_nonce: file0_nonce,
+        sha256: file0_sha256,
+        chunks: None,
+    }];
+    let mut encrypted_parts = vec![file0_enc];
+
+    // ── file1: CHUNKED, streamed from disk ───────────────────────────────────
+    let file1_bytes: Vec<u8> = (0..3000u32).map(|i| ((i * 7 + 3) % 253) as u8).collect();
+    let file1_path = dir.join("chunked.bin");
+    std::fs::File::create(&file1_path)
+        .unwrap()
+        .write_all(&file1_bytes)
+        .unwrap();
+    let (file1_enc, file1_chunks, file1_sha256, file1_len) =
+        vault::encrypt_file_chunked(&file1_path, &key, chunk_size, &mut |_| {}).unwrap();
+    assert!(file1_chunks.len() > 1, "chunked file should span multiple chunks");
+    let file1_id = uuid::Uuid::new_v4().to_string();
+    files_meta.push(FileMetadata {
+        id: file1_id.clone(),
+        name: "chunked.bin".into(),
+        mime: "application/octet-stream".into(),
+        size: file1_len,
+        offset: 0,
+        data_nonce: [0u8; 12], // unused for chunked files
+        sha256: file1_sha256,
+        chunks: Some(file1_chunks),
+    });
+    encrypted_parts.push(file1_enc);
+
+    // Layout + assemble EXACTLY as create_container does.
+    let (enc_meta, meta_nonce) =
+        vault::compute_v2_layout(&key, &mut files_meta, &encrypted_parts).unwrap();
+
+    let salt = [0u8; crypto::SALT_LEN];
+    let mut blob = Vec::new();
+    blob.extend_from_slice(&salt);
+    blob.extend_from_slice(&(enc_meta.len() as u32).to_le_bytes());
+    blob.extend_from_slice(&meta_nonce);
+    blob.extend_from_slice(&enc_meta);
+    for ef in &encrypted_parts {
+        blob.extend_from_slice(ef);
+    }
+
+    let meta_len = u32::from_le_bytes(
+        blob[crypto::SALT_LEN..crypto::SALT_LEN + 4].try_into().unwrap(),
+    ) as usize;
+
+    // ── Recover file1 (the SECOND file) using get_file_data_v2's offset math ──
+    let prior_sum = vault::file_encrypted_len(&files_meta[0]);
+    let offset = crypto::SALT_LEN + 4 + crypto::NONCE_LEN + meta_len + prior_sum;
+    let section_len = vault::file_encrypted_len(&files_meta[1]);
+    assert!(offset + section_len <= blob.len(), "file1 offset out of bounds");
+    let section = &blob[offset..offset + section_len];
+    let recovered1 = vault::decrypt_file(section, &files_meta[1], &key).unwrap();
+    assert_eq!(recovered1, file1_bytes, "chunked file1 (after prior whole-file) must roundtrip");
+    assert_eq!(crypto::sha256_hex(&recovered1), files_meta[1].sha256);
+
+    // ── Recover file0 (whole-file legacy, offset 0) — backward compat proof ──
+    let file0_offset = crypto::SALT_LEN + 4 + crypto::NONCE_LEN + meta_len;
+    let file0_section_len = vault::file_encrypted_len(&files_meta[0]);
+    let file0_section = &blob[file0_offset..file0_offset + file0_section_len];
+    let recovered0 = vault::decrypt_file(file0_section, &files_meta[0], &key).unwrap();
+    assert_eq!(recovered0, file0_bytes, "legacy whole-file file0 must still roundtrip");
+    assert_eq!(crypto::sha256_hex(&recovered0), files_meta[0].sha256);
+
+    std::fs::remove_dir_all(&dir).ok();
+}
