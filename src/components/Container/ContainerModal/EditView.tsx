@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
-import { DropZone } from '../../UI';
-import type { VaultFileMeta } from '../../../types/vault';
+import { usePickFiles } from '../../../hooks/usePickFiles';
+import type { FileInput, VaultFileMeta } from '../../../types/vault';
 import { formatBytes } from '../../../utils/format';
 import './EditView.css';
 
 interface EditViewProps {
   files: VaultFileMeta[];
-  onSave: (password: string, filesToRemove: string[], newFiles: File[]) => void;
+  onSave: (password: string, filesToRemove: string[], newFiles: FileInput[]) => void;
   onCancel: () => void;
   isLoading?: boolean;
 }
@@ -55,8 +55,17 @@ export const EditView: React.FC<EditViewProps> = ({
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [filesToRemove, setFilesToRemove] = useState<string[]>([]);
-  const [newFiles, setNewFiles] = useState<File[]>([]);
-  const [showDropZone, setShowDropZone] = useState(false);
+  const [newFiles, setNewFiles] = useState<FileInput[]>([]);
+  const pickFiles = usePickFiles();
+
+  const handleAddFiles = async () => {
+    const picked = await pickFiles();
+    if (picked.length) setNewFiles(prev => [...prev, ...picked]);
+  };
+
+  const removeNewFile = (path: string) => {
+    setNewFiles(prev => prev.filter(f => f.path !== path));
+  };
 
   const toggleRemove = (fileId: string) => {
     setFilesToRemove(prev =>
@@ -128,19 +137,37 @@ export const EditView: React.FC<EditViewProps> = ({
           </svg>
           Add New Files
         </h3>
-        {showDropZone ? (
-          <DropZone
-            onFilesSelected={files => { setNewFiles(files); if (files.length === 0) setShowDropZone(false); }}
-            existingFiles={newFiles}
-          />
-        ) : (
-          <button type="button" className="edit-add-btn" onClick={() => setShowDropZone(true)}>
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="12" y1="5" x2="12" y2="19" />
-              <line x1="5" y1="12" x2="19" y2="12" />
-            </svg>
-            Add Files
-          </button>
+        <button type="button" className="edit-add-btn" onClick={handleAddFiles}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Add files…
+        </button>
+
+        {newFiles.length > 0 && (
+          <div className="edit-file-list edit-new-file-list">
+            {newFiles.map(file => (
+              <div key={file.path} className="edit-file-item">
+                <div className="edit-file-icon">
+                  <FileSvg mime={file.mime} />
+                </div>
+                <span className="edit-file-name">{file.name}</span>
+                <span className="edit-file-size">{formatBytes(file.size)}</span>
+                <button
+                  type="button"
+                  className="edit-file-toggle"
+                  onClick={() => removeNewFile(file.path)}
+                  aria-label={`Remove ${file.name}`}
+                >
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="18" y1="6" x2="6" y2="18" />
+                    <line x1="6" y1="6" x2="18" y2="18" />
+                  </svg>
+                </button>
+              </div>
+            ))}
+          </div>
         )}
       </div>
 

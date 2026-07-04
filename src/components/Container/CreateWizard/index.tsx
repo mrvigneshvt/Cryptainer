@@ -13,12 +13,12 @@ interface CreateWizardProps {
 
 export const CreateWizard: React.FC<CreateWizardProps> = ({ onClose }) => {
   const [step, setStep] = useState<1 | 2>(1);
-  const [step1Data, setStep1Data] = useState<{ name: string; files: File[] } | null>(null);
+  const [step1Data, setStep1Data] = useState<{ name: string; files: FileInput[] } | null>(null);
   const { createContainer } = useVaultStore();
   const [isLoading, setIsLoading] = useState(false);
   const { progress } = useTauriProgress(isLoading);
 
-  const handleStep1Next = (data: { name: string; files: File[] }) => {
+  const handleStep1Next = (data: { name: string; files: FileInput[] }) => {
     setStep1Data(data);
     setStep(2);
   };
@@ -33,22 +33,12 @@ export const CreateWizard: React.FC<CreateWizardProps> = ({ onClose }) => {
     if (!step1Data) return;
     setIsLoading(true);
     try {
-      const fileInputs: FileInput[] = await Promise.all(
-        step1Data.files.map(async (file) => {
-          const arrayBuffer = await file.arrayBuffer();
-          return {
-            name: file.name,
-            mime: file.type || 'application/octet-stream',
-            data: Array.from(new Uint8Array(arrayBuffer)),
-          };
-        })
-      );
       await createContainer({
         name: step1Data.name,
         kdf_params: config.kdfParams,
         hint: config.hint,
         password: config.password,
-        files: fileInputs,
+        files: step1Data.files,
       });
       onClose();
     } catch (e) {

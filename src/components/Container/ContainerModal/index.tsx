@@ -7,7 +7,7 @@ import { DownloadView } from './DownloadView';
 import { PreviewRouter } from '../../Preview';
 import { useVaultStore } from '../../../store/vaultStore';
 import { useTauriProgress } from '../../../hooks/useTauriProgress';
-import type { ContainerMeta, VaultFileMeta } from '../../../types/vault';
+import type { ContainerMeta, FileInput, VaultFileMeta } from '../../../types/vault';
 import './index.css';
 
 interface ContainerModalProps {
@@ -74,24 +74,13 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
   const handleSaveEdits = async (
     password: string,
     filesToRemove: string[],
-    newFiles: File[]
+    newFiles: FileInput[]
   ) => {
     setError(null);
     setIsLoading(true);
     try {
-      const fileInputs = await Promise.all(
-        newFiles.map(async (file) => {
-          const arrayBuffer = await file.arrayBuffer();
-          return {
-            name: file.name,
-            mime: file.type || 'application/octet-stream',
-            data: Array.from(new Uint8Array(arrayBuffer)),
-          };
-        })
-      );
+      await saveContainerEdits(container.id, password, newFiles, filesToRemove);
 
-      await saveContainerEdits(container.id, password, fileInputs, filesToRemove);
-      
       const updatedFiles = await unlockContainer(container.id, password);
       setFiles(updatedFiles);
       setView('open');

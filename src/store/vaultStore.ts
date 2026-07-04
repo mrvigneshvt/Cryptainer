@@ -58,7 +58,7 @@ export const useVaultStore = create<VaultState>((set) => ({
           algo: 'AES-GCM-256',
           kdf_params: input.kdf_params,
           file_count: input.files?.length ?? 0,
-          total_size: input.files?.reduce((s, f) => s + f.data.length, 0) ?? 0,
+          total_size: input.files?.reduce((s, f) => s + f.size, 0) ?? 0,
           blob_path: '/mock/' + input.name + '.ctnr',
           blob_sha256: 'mock-sha256-' + Date.now(),
           created_at: now,

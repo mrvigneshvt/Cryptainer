@@ -31,9 +31,10 @@ export interface VaultFileMeta {
 }
 
 export interface FileInput {
+  path: string;
   name: string;
   mime: string;
-  data: number[];  // Uint8Array serialized as number[] for IPC
+  size: number;  // bytes; backend reads bytes from `path` itself
 }
 
 export interface CreateContainerInput {

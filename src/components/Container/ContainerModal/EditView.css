@@ -141,6 +141,10 @@
   background-color: var(--accent-dim);
 }
 
+.edit-new-file-list {
+  margin-top: 0.625rem;
+}
+
 .edit-password-section {
   width: 100%;
 }
