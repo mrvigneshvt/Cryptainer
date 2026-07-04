@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
-import { Modal } from '../../UI';
+import { Modal, ProgressOverlay } from '../../UI';
 import { Step1Files } from './Step1Files';
 import { Step2Config } from './Step2Config';
 import { useVaultStore } from '../../../store/vaultStore';
+import { useTauriProgress } from '../../../hooks/useTauriProgress';
 import type { FileInput, KdfParams } from '../../../types/vault';
 import './index.css';
 
@@ -15,6 +16,7 @@ export const CreateWizard: React.FC<CreateWizardProps> = ({ onClose }) => {
   const [step1Data, setStep1Data] = useState<{ name: string; files: File[] } | null>(null);
   const { createContainer } = useVaultStore();
   const [isLoading, setIsLoading] = useState(false);
+  const { progress } = useTauriProgress(isLoading);
 
   const handleStep1Next = (data: { name: string; files: File[] }) => {
     setStep1Data(data);
@@ -94,6 +96,7 @@ export const CreateWizard: React.FC<CreateWizardProps> = ({ onClose }) => {
           />
         )}
       </div>
+      <ProgressOverlay open={isLoading} progress={progress} fallbackMessage="Encrypting files\u2026" />
     </Modal>
   );
 };
