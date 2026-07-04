@@ -74,6 +74,16 @@ pub struct ChunkMetadata {
     pub size: u64,
 }
 
+/// On-disk encrypted length of a file's data section (ciphertext + GCM tags).
+/// Whole-file layout: plaintext size + one 16-byte tag.
+/// Chunked layout: sum over chunks of (chunk size + 16-byte tag).
+pub fn file_encrypted_len(fm: &FileMetadata) -> usize {
+    match &fm.chunks {
+        Some(chunks) => chunks.iter().map(|c| c.size as usize + 16).sum(),
+        None => fm.size as usize + 16,
+    }
+}
+
 /// A single audit log event returned by `list_audit_events`.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AuditEvent {
@@ -200,6 +210,26 @@ mod tests {
         let json = serde_json::to_string(&fm).unwrap();
         let recovered: FileMetadata = serde_json::from_str(&json).unwrap();
         assert_eq!(recovered.chunks.as_ref().unwrap().len(), 2);
+    }
+
+    #[test]
+    fn file_encrypted_len_whole_vs_chunked() {
+        let base = FileMetadata {
+            id: "x".into(), name: "a".into(), mime: "application/octet-stream".into(),
+            size: 100, offset: 0, data_nonce: [0u8; 12], sha256: String::new(), chunks: None,
+        };
+        // whole file: plaintext + one 16-byte tag
+        assert_eq!(file_encrypted_len(&base), 100 + 16);
+
+        let chunked = FileMetadata {
+            chunks: Some(vec![
+                ChunkMetadata { offset: 0,  nonce: [0u8; 12], size: 60 },
+                ChunkMetadata { offset: 76, nonce: [0u8; 12], size: 40 },
+            ]),
+            ..base
+        };
+        // two chunks: (60+16) + (40+16)
+        assert_eq!(file_encrypted_len(&chunked), 76 + 56);
     }
 
     #[test]
