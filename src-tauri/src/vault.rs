@@ -88,7 +88,15 @@ pub fn decrypt_file(
             let mut out = Vec::with_capacity(fm.size as usize);
             for c in chunks {
                 let start = c.offset as usize;
-                let end = start + c.size as usize + 16;
+                // Checked arithmetic: a hostile/corrupt chunk with an absurd
+                // offset/size (near usize::MAX) must not wrap `end` to a small
+                // value that slips past the bounds guard below. Overflow ==
+                // corruption. With checked_add, end >= start always holds, so
+                // the slice `section[start..end]` can never have start > end.
+                let end = start
+                    .checked_add(c.size as usize)
+                    .and_then(|v| v.checked_add(16))
+                    .ok_or(CryptoError::IntegrityFailure)?;
                 if end > section.len() {
                     return Err(CryptoError::IntegrityFailure);
                 }
@@ -283,6 +291,37 @@ mod tests {
             ..fm_whole.clone()
         };
         assert_eq!(decrypt_file(&section, &fm_chunked, &key).unwrap(), b"hello world");
+    }
+
+    #[test]
+    fn decrypt_file_rejects_malformed_chunk_metadata() {
+        let key = [7u8; 32];
+        let base = FileMetadata {
+            id: "m".into(), name: "m".into(), mime: "".into(), size: 0, offset: 0,
+            data_nonce: [0u8; 12], sha256: String::new(), chunks: None,
+        };
+
+        // Absurd size (u64::MAX) with a short section: the size + 16 arithmetic
+        // would overflow. Must return IntegrityFailure, NOT panic.
+        let fm_overflow = FileMetadata {
+            chunks: Some(vec![ChunkMetadata { offset: 0, nonce: [0u8; 12], size: u64::MAX }]),
+            ..base.clone()
+        };
+        let short_section = vec![0u8; 8];
+        assert!(matches!(
+            decrypt_file(&short_section, &fm_overflow, &key),
+            Err(CryptoError::IntegrityFailure)
+        ));
+
+        // Offset past the end of the section. Must return IntegrityFailure.
+        let fm_past_end = FileMetadata {
+            chunks: Some(vec![ChunkMetadata { offset: 1000, nonce: [0u8; 12], size: 5 }]),
+            ..base.clone()
+        };
+        assert!(matches!(
+            decrypt_file(&short_section, &fm_past_end, &key),
+            Err(CryptoError::IntegrityFailure)
+        ));
     }
 
     #[test]
