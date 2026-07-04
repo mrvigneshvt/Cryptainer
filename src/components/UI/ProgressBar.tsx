@@ -1,8 +1,7 @@
 import React from 'react';
 import './ProgressBar.css';
-
 export interface ProgressBarProps {
-  operation: 'encrypt' | 'decrypt' | 'derive-key' | 'write-blob' | 'read-blob' | 'migrate' | 'idle';
+  operation: 'encrypt' | 'decrypt' | 'derive-key' | 'write-blob' | 'read-blob' | 'migrate' | 'import' | 'export' | 'idle';
   current: number;
   total: number;
   fileName?: string;
@@ -18,23 +17,27 @@ export interface ProgressBarProps {
 }
 
 const OPERATION_VERB: Record<ProgressBarProps['operation'], string> = {
-  encrypt:    'Encrypting',
-  decrypt:    'Decrypting',
-  'derive-key': 'Deriving key\u2026',
-  'write-blob': 'Writing blob\u2026',
-  'read-blob':  'Reading blob\u2026',
-  migrate:    'Migrating\u2026',
-  idle:       '',
+  encrypt:       'Encrypting',
+  decrypt:       'Decrypting',
+  'derive-key':  'Deriving key\u2026',
+  'write-blob':  'Writing blob\u2026',
+  'read-blob':   'Reading blob\u2026',
+  migrate:       'Migrating\u2026',
+  import:        'Importing',
+  export:        'Exporting',
+  idle:          '',
 };
 
 const OPERATION_ICON: Record<ProgressBarProps['operation'], string> = {
-  encrypt:    '\u{1F512}',  // 🔒
-  decrypt:    '\u{1F4E5}',  // 📥
-  'derive-key': '\u{1F511}', // 🔑
-  'write-blob': '\u{1F4BE}', // 💾
-  'read-blob':  '\u{1F4C2}', // 📂
-  migrate:    '\u{1F504}',  // 🔄
-  idle:       '',
+  encrypt:       '\u{1F512}', // 🔒
+  decrypt:       '\u{1F4E5}', // 📥
+  'derive-key':  '\u{1F511}', // 🔑
+  'write-blob':  '\u{1F4BE}', // 💾
+  'read-blob':   '\u{1F4C2}', // 📂
+  migrate:       '\u{1F504}', // 🔄
+  import:        '\u{1F4E5}', // 📥
+  export:        '\u{1F4E4}', // 📤
+  idle:          '',
 };
 
 function formatBytes(bytes: number): string {

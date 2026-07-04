@@ -1,0 +1,46 @@
+/* =============================================================================
+   ProgressOverlay — Full-screen modal overlay for long-running operations
+   Renders above .modal-overlay (z-index: 1000) via z-index: 1100.
+   Theme-aware via CSS custom properties (PRISM + CIPHER).
+   Respects prefers-reduced-motion.
+   ============================================================================= */
+
+.progress-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--bg-overlay);
+  animation: fadeIn 0.2s ease;
+  pointer-events: auto;
+}
+
+.progress-overlay-card {
+  width: 90%;
+  max-width: 420px;
+  background-color: var(--bg-secondary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 1.5rem;
+  animation: slideIn 0.2s ease;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes slideIn {
+  from { opacity: 0; transform: translateY(-12px) scale(0.97); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .progress-overlay,
+  .progress-overlay-card {
+    animation: none;
+  }
+}
