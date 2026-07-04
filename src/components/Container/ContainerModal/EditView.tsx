@@ -1,6 +1,5 @@
 import React, { useState } from 'react';
-import { DropZone, ProgressBar } from '../../UI';
-import { useTauriProgress } from '../../../hooks/useTauriProgress';
+import { DropZone } from '../../UI';
 import type { VaultFileMeta } from '../../../types/vault';
 import { formatBytes } from '../../../utils/format';
 import './EditView.css';
@@ -53,7 +52,6 @@ export const EditView: React.FC<EditViewProps> = ({
   onCancel,
   isLoading = false,
 }) => {
-  const { progress } = useTauriProgress(isLoading);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [filesToRemove, setFilesToRemove] = useState<string[]>([]);
@@ -187,16 +185,7 @@ export const EditView: React.FC<EditViewProps> = ({
           disabled={!password || !hasChanges || isLoading}
         >
           {isLoading ? (
-            <ProgressBar
-              operation={progress?.operation ?? 'encrypt'}
-              current={progress?.current ?? 0}
-              total={progress?.total ?? 0}
-              fileName={progress?.file_name ?? undefined}
-              bytesProcessed={progress?.bytes_processed}
-              bytesTotal={progress?.bytes_total}
-              message={progress?.message ?? 'Saving changes…'}
-              indeterminate={!progress || progress.total === 0}
-            />
+            <span className="edit-spinner">Saving\u2026</span>
           ) : (
             <>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Modal } from '../../UI';
+import { Modal, ProgressOverlay } from '../../UI';
 import { LockView } from './LockView';
 import { OpenView } from './OpenView';
 import { EditView } from './EditView';
 import { DownloadView } from './DownloadView';
 import { PreviewRouter } from '../../Preview';
 import { useVaultStore } from '../../../store/vaultStore';
+import { useTauriProgress } from '../../../hooks/useTauriProgress';
 import type { ContainerMeta, VaultFileMeta } from '../../../types/vault';
 import './index.css';
 
@@ -31,7 +32,10 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
   const previewFileRef = useRef(previewFile);
   useEffect(() => { previewFileRef.current = previewFile; });
   const { unlockContainer, lockContainer, getFileData, saveContainerEdits, releaseFileData } = useVaultStore();
-
+  const { progress } = useTauriProgress(isLoading);
+  const fallbackMessage = view === 'edit' ? 'Saving changes\u2026'
+    : view === 'preview' ? 'Loading file\u2026'
+    : 'Unlocking container\u2026';
   const handleUnlock = async (password: string) => {
     setError(null);
     setIsLoading(true);
@@ -206,6 +210,7 @@ export const ContainerModal: React.FC<ContainerModalProps> = ({
           </div>
         )}
       </div>
+      <ProgressOverlay open={isLoading} progress={progress} fallbackMessage={fallbackMessage} />
     </Modal>
   );
 };

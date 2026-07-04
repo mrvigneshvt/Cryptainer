@@ -1,6 +1,4 @@
 import React, { useState } from 'react';
-import { ProgressBar } from '../../UI';
-import { useTauriProgress } from '../../../hooks/useTauriProgress';
 import type { ContainerMeta } from '../../../types/vault';
 import { formatBytes } from '../../../utils/format';
 import './LockView.css';
@@ -18,7 +16,6 @@ export const LockView: React.FC<LockViewProps> = ({
   isLoading = false,
   error: serverError,
 }) => {
-  const { progress } = useTauriProgress(isLoading);
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -117,13 +114,7 @@ export const LockView: React.FC<LockViewProps> = ({
           disabled={isLoading}
         >
           {isLoading ? (
-            <ProgressBar
-              operation={progress?.operation ?? 'derive-key'}
-              current={progress?.current ?? 0}
-              total={progress?.total ?? 0}
-              message={progress?.message ?? 'Unlocking container…'}
-              indeterminate={true}
-            />
+            <span className="lock-spinner">Unlocking\u2026</span>
           ) : (
             <>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
