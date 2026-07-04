@@ -593,3 +593,184 @@ fn v2_remove_non_trailing_file_keeps_remaining_decryptable() {
         prior_sum += enc_len;
     }
 }
+
+/// Task 5: exercises `save_edits_v2`'s retained+add path at the helper level.
+///
+/// The real command needs a live Tauri `AppHandle`/pool, so this mirrors the
+/// exact sequence the retained and add loops now perform, using the same
+/// `vault::` helpers the command calls:
+///  1. Build an initial v2 blob holding ONE CHUNKED file (as `create_container`
+///     now produces): `encrypt_file_chunked` + `compute_v2_layout` + assembly.
+///  2. Retained loop: recover that chunked file via read-side offset recovery
+///     (`file_encrypted_len` for the section length, `decrypt_file` for the
+///     bytes — the Task 5 change) and re-encrypt it WHOLE-FILE (`chunks: None`).
+///  3. Add loop: stream a NEW temp file via `encrypt_file_chunked` (`chunks:
+///     Some`, `data_nonce: [0;12]`, `size = plaintext_len`).
+///  4. `compute_v2_layout` over [retained, new], assemble the new blob, then
+///     recover BOTH files and assert they decode to their originals — retained
+///     via its NEW whole-file nonce, added via its chunk metadata.
+///
+/// This proves the retained-read-of-a-chunked-file works (the pre-fix
+/// `fm.size + 16` + `decrypt_section` math mis-slices/mis-authenticates a
+/// chunked section) and that the added file is chunked. Fixed key, no KDF.
+#[test]
+fn save_edits_v2_streaming_roundtrips() {
+    use std::io::Write;
+
+    // Fixed key — exercises blob assembly + the retained/add helpers, not KDF.
+    let key = [0x3Cu8; 32];
+    // Small chunk size so both files span multiple chunks.
+    let chunk_size = 2048usize;
+
+    let dir = std::env::temp_dir().join(format!(
+        "ctnr_save_edits_stream_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    // ── 1. Build the initial v2 blob with ONE chunked file ──────────────────
+    let retained_bytes: Vec<u8> = (0..7000u32).map(|i| (i % 251) as u8).collect();
+    let retained_path = dir.join("retained.bin");
+    std::fs::File::create(&retained_path)
+        .unwrap()
+        .write_all(&retained_bytes)
+        .unwrap();
+
+    let (r_enc, r_chunks, r_sha, r_len) =
+        vault::encrypt_file_chunked(&retained_path, &key, chunk_size, &mut |_| {}).unwrap();
+    assert!(r_chunks.len() > 1, "retained file must be chunked for a meaningful test");
+
+    let retained_id = uuid::Uuid::new_v4().to_string();
+    let mut init_meta = vec![FileMetadata {
+        id: retained_id.clone(),
+        name: "retained.bin".into(),
+        mime: "application/octet-stream".into(),
+        size: r_len,
+        offset: 0,
+        data_nonce: [0u8; 12],
+        sha256: r_sha,
+        chunks: Some(r_chunks),
+    }];
+    let init_parts = vec![r_enc];
+    let (init_enc_meta, init_meta_nonce) =
+        vault::compute_v2_layout(&key, &mut init_meta, &init_parts).unwrap();
+
+    let salt = [0u8; crypto::SALT_LEN];
+    let mut blob = Vec::new();
+    blob.extend_from_slice(&salt);
+    blob.extend_from_slice(&(init_enc_meta.len() as u32).to_le_bytes());
+    blob.extend_from_slice(&init_meta_nonce);
+    blob.extend_from_slice(&init_enc_meta);
+    for ef in &init_parts {
+        blob.extend_from_slice(ef);
+    }
+
+    // The container's stored metadata (what the v2 session would hold).
+    let old_files = init_meta.clone();
+
+    // ── 2. Retained loop: read-side recovery of the CHUNKED file ────────────
+    let blob_metadata_len = u32::from_le_bytes(
+        blob[crypto::SALT_LEN..crypto::SALT_LEN + 4].try_into().unwrap(),
+    ) as usize;
+
+    let mut new_meta: Vec<FileMetadata> = Vec::new();
+    let mut encrypted_parts: Vec<Vec<u8>> = Vec::new();
+    let mut prior_sum: usize = 0;
+
+    for fm in &old_files {
+        // Task 5 change: helper-based encrypted length + decrypt (was
+        // `fm.size + 16` and `crypto::decrypt_section(.., &fm.data_nonce)`).
+        let enc_len = vault::file_encrypted_len(fm);
+        let actual_offset = crypto::SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum;
+        assert!(actual_offset + enc_len <= blob.len(), "retained offset out of bounds");
+        let plaintext =
+            vault::decrypt_file(&blob[actual_offset..actual_offset + enc_len], fm, &key).unwrap();
+
+        // Retained files are re-encrypted WHOLE-FILE (chunks: None).
+        let sha256 = crypto::sha256_hex(&plaintext);
+        let (new_enc, new_nonce) = crypto::encrypt_section(&plaintext, &key).unwrap();
+        new_meta.push(FileMetadata {
+            id: fm.id.clone(),
+            name: fm.name.clone(),
+            mime: fm.mime.clone(),
+            size: fm.size,
+            offset: 0,
+            data_nonce: new_nonce,
+            sha256,
+            chunks: None,
+        });
+        encrypted_parts.push(new_enc);
+        prior_sum += enc_len;
+    }
+
+    // ── 3. Add loop: stream a NEW file via encrypt_file_chunked ─────────────
+    let added_bytes: Vec<u8> = (0..5000u32).map(|i| ((i * 13 + 7) % 249) as u8).collect();
+    let added_path = dir.join("added.bin");
+    std::fs::File::create(&added_path)
+        .unwrap()
+        .write_all(&added_bytes)
+        .unwrap();
+
+    // Mirror the fixed bytes_total the production emit now reports.
+    let total_add_bytes: u64 = added_bytes.len() as u64;
+    assert!(total_add_bytes > 0, "bytes_total must be non-zero (the review bug fix)");
+
+    let (a_enc, a_chunks, a_sha, a_len) =
+        vault::encrypt_file_chunked(&added_path, &key, chunk_size, &mut |_| {}).unwrap();
+    assert!(a_chunks.len() > 1, "added file should be chunked");
+    assert_eq!(a_len, total_add_bytes, "size must be plaintext length");
+
+    let added_id = uuid::Uuid::new_v4().to_string();
+    new_meta.push(FileMetadata {
+        id: added_id.clone(),
+        name: "added.bin".into(),
+        mime: "application/octet-stream".into(),
+        size: a_len,
+        offset: 0,
+        data_nonce: [0u8; 12],
+        sha256: a_sha,
+        chunks: Some(a_chunks),
+    });
+    encrypted_parts.push(a_enc);
+
+    // ── 4. Assemble the new blob and recover BOTH files ─────────────────────
+    let (enc_meta, meta_nonce) =
+        vault::compute_v2_layout(&key, &mut new_meta, &encrypted_parts).unwrap();
+    let mut new_blob = Vec::new();
+    new_blob.extend_from_slice(&salt);
+    new_blob.extend_from_slice(&(enc_meta.len() as u32).to_le_bytes());
+    new_blob.extend_from_slice(&meta_nonce);
+    new_blob.extend_from_slice(&enc_meta);
+    for ef in &encrypted_parts {
+        new_blob.extend_from_slice(ef);
+    }
+
+    let new_meta_len = u32::from_le_bytes(
+        new_blob[crypto::SALT_LEN..crypto::SALT_LEN + 4].try_into().unwrap(),
+    ) as usize;
+    let base = crypto::SALT_LEN + 4 + crypto::NONCE_LEN + new_meta_len;
+
+    // Retained file: now whole-file (chunks: None) with a fresh nonce.
+    let retained_fm = new_meta.iter().find(|f| f.id == retained_id).unwrap();
+    assert!(retained_fm.chunks.is_none(), "retained file must be re-encrypted whole-file");
+    let r_section_len = vault::file_encrypted_len(retained_fm);
+    let r_recovered =
+        vault::decrypt_file(&new_blob[base..base + r_section_len], retained_fm, &key).unwrap();
+    assert_eq!(r_recovered, retained_bytes, "retained (chunked → whole-file) roundtrip");
+
+    // Added file: chunked, decode via its chunk metadata.
+    let added_fm = new_meta.iter().find(|f| f.id == added_id).unwrap();
+    assert!(added_fm.chunks.is_some(), "added file must be chunked");
+    let a_off = base + r_section_len;
+    let a_section_len = vault::file_encrypted_len(added_fm);
+    assert!(a_off + a_section_len <= new_blob.len(), "added offset out of bounds");
+    let a_recovered =
+        vault::decrypt_file(&new_blob[a_off..a_off + a_section_len], added_fm, &key).unwrap();
+    assert_eq!(a_recovered, added_bytes, "added (streamed chunked) roundtrip");
+
+    std::fs::remove_dir_all(&dir).ok();
+}

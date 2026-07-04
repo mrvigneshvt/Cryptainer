@@ -802,10 +802,11 @@ async fn save_edits_v2(
     let retained_count = old_metadata.files.iter().filter(|fm| !file_ids_to_remove.contains(&fm.id)).count();
     let total_ops = (retained_count + files_to_add.len()) as u64;
 
-    // Decrypt remaining files (not removed), re-encrypt with new nonces
+    // Decrypt remaining files (not removed), re-encrypt with new nonces.
     // Uses read-side offset recovery (ignores stored fm.offset, computes from
-    // blob header metadata_len + cumulative {size+16} sums) so that containers
-    // created with the buggy two-pass code remain readable.
+    // blob header metadata_len + cumulative `file_encrypted_len` sums) so that
+    // containers created with the buggy two-pass code — and chunked files from
+    // the streaming create_container — remain readable.
     let mut new_meta: Vec<FileMetadata> = Vec::new();
     let mut encrypted_parts: Vec<Vec<u8>> = Vec::new();
     let mut total_size: u64 = 0;
@@ -813,7 +814,10 @@ async fn save_edits_v2(
     let mut progress_idx: u64 = 0;
 
     for fm in &old_metadata.files {
-        let enc_len = fm.size as usize + 16;
+        // On-disk encrypted length handles both whole-file and chunked layouts.
+        // Retained files created by the streaming `create_container` are chunked,
+        // so `fm.size + 16` would mis-slice them.
+        let enc_len = vault::file_encrypted_len(fm);
         if file_ids_to_remove.contains(&fm.id) {
             prior_sum += enc_len;
             continue;
@@ -832,8 +836,11 @@ async fn save_edits_v2(
         if actual_offset + enc_len > blob.len() {
             return Err(CryptoError::IntegrityFailure);
         }
-        let plaintext = crypto::decrypt_section(&blob[actual_offset..actual_offset + enc_len], &key_arr, &fm.data_nonce)?;
+        // `decrypt_file` handles both whole-file and chunked source layouts.
+        let plaintext = vault::decrypt_file(&blob[actual_offset..actual_offset + enc_len], fm, &key_arr)?;
         let sha256 = crypto::sha256_hex(&plaintext);
+        // Retained files are re-encrypted WHOLE-FILE, so their new metadata is
+        // `chunks: None` with a fresh whole-file nonce.
         let (new_enc, new_nonce) = crypto::encrypt_section(&plaintext, &key_arr)?;
 
         new_meta.push(FileMetadata {
@@ -844,7 +851,7 @@ async fn save_edits_v2(
             offset: 0,
             data_nonce: new_nonce,
             sha256,
-            chunks: fm.chunks.clone(),
+            chunks: None,
         });
         total_size += fm.size;
         encrypted_parts.push(new_enc);
@@ -852,34 +859,40 @@ async fn save_edits_v2(
         progress_idx += 1;
     }
 
-    // Encrypt new files
-    // TODO(Task 5): stream from path via encrypt_file_chunked (chunked layout +
-    // per-chunk byte progress). For now this reads the whole file into memory and
-    // whole-file-encrypts it to preserve current behavior after the FileInput change.
+    // Encrypt new files by streaming from disk in chunks (chunked layout +
+    // per-chunk byte progress). Progress reports cumulative added bytes against
+    // the true total of all files being added.
+    let total_add_bytes: u64 = files_to_add.iter().map(|f| f.size).sum();
+    let mut add_done: u64 = 0;
     for f in &files_to_add {
-        emit_progress(&app, ProgressPayload {
-            operation: "encrypt".into(),
-            current: progress_idx,
-            total: total_ops,
-            file_name: Some(f.name.clone()),
-            bytes_processed: total_size,
-            bytes_total: 0,
-            message: format!("Encrypting {} ({} / {})", f.name, progress_idx + 1, total_ops),
-        });
-        let bytes = std::fs::read(&f.path)?;
-        let sha256 = crypto::sha256_hex(&bytes);
-        let (enc, nonce) = crypto::encrypt_section(&bytes, &key_arr)?;
+        let base = add_done;
+        let mut emit = |done_in_file: u64| {
+            emit_progress(&app, ProgressPayload {
+                operation: "encrypt".into(),
+                current: progress_idx,
+                total: total_ops,
+                file_name: Some(f.name.clone()),
+                bytes_processed: base + done_in_file, // cumulative added bytes
+                bytes_total: total_add_bytes,         // real total (was 0)
+                message: format!("Encrypting {} ({} / {})", f.name, progress_idx + 1, total_ops),
+            });
+        };
+        emit(0);
+        let (enc, chunks, sha256, plaintext_len) = vault::encrypt_file_chunked(
+            std::path::Path::new(&f.path), &key_arr, vault::ENCRYPT_CHUNK_SIZE, &mut emit,
+        )?;
         new_meta.push(FileMetadata {
             id: Uuid::new_v4().to_string(),
             name: f.name.clone(),
             mime: f.mime.clone(),
-            size: bytes.len() as u64,
+            size: plaintext_len,
             offset: 0,
-            data_nonce: nonce,
+            data_nonce: [0u8; 12],
             sha256,
-            chunks: None,
+            chunks: Some(chunks),
         });
-        total_size += bytes.len() as u64;
+        total_size += plaintext_len;
+        add_done += plaintext_len;
         encrypted_parts.push(enc);
         progress_idx += 1;
     }
