@@ -990,10 +990,11 @@ pub async fn lock_container(
     Ok(())
 }
 
-/// Export a container to a .ctnr file at the given path.
+/// Export a container to a .ctnr file.
 /// Checks that the destination path does not already exist to avoid overwriting.
 #[tauri::command]
 pub async fn export_container(
+    app: AppHandle,
     container_id: String,
     dest_path: String,
     pool: State<'_, sqlx::SqlitePool>,
@@ -1005,8 +1006,27 @@ pub async fn export_container(
         ));
     }
     let meta = storage::get_container(&pool, &container_id).await?;
+
+    emit_progress(&app, ProgressPayload {
+        operation: "export".into(),
+        current: 0, total: 0,
+        file_name: Some(meta.name.clone()),
+        bytes_processed: 0, bytes_total: 0,
+        message: "Reading container for export\u{2026}".into(),
+    });
+
     let blob = std::fs::read(&meta.blob_path)?;
     let ctnr_bytes = export::serialize(&meta, &blob)?;
+
+    emit_progress(&app, ProgressPayload {
+        operation: "export".into(),
+        current: 0, total: 0,
+        file_name: Some(meta.name.clone()),
+        bytes_processed: ctnr_bytes.len() as u64,
+        bytes_total: ctnr_bytes.len() as u64,
+        message: "Writing export file\u{2026}".into(),
+    });
+
     std::fs::write(&dest_path, ctnr_bytes)?;
     let details = serde_json::json!({ "dest_path": &dest_path }).to_string();
     record_audit(&pool, "export", Some(&container_id), Some(&meta.name), Some(&details));
@@ -1022,6 +1042,14 @@ pub async fn import_container(
     pool: State<'_, sqlx::SqlitePool>,
 ) -> std::result::Result<ContainerMeta, CryptoError> {
     let bytes = std::fs::read(&src_path)?;
+
+    emit_progress(&app, ProgressPayload {
+        operation: "import".into(),
+        current: 0, total: 0,
+        file_name: None,
+        bytes_processed: 0, bytes_total: 0,
+        message: "Reading import file\u{2026}".into(),
+    });
     let (header, blob) = export::deserialize(&bytes)?;
 
     // Verify blob integrity
@@ -1046,6 +1074,15 @@ pub async fn import_container(
         .join("blobs");
     std::fs::create_dir_all(&blobs_dir)?;
     let blob_path = blobs_dir.join(format!("{}.enc", header.id));
+
+    emit_progress(&app, ProgressPayload {
+        operation: "import".into(),
+        current: 0, total: 0,
+        file_name: Some(header.name.clone()),
+        bytes_processed: blob.len() as u64,
+        bytes_total: blob.len() as u64,
+        message: "Writing imported container\u{2026}".into(),
+    });
     std::fs::write(&blob_path, &blob)?;
 
     let kdf_params: KdfParams = serde_json::from_value(header.kdf_params)?;
