@@ -91,7 +91,12 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   compact,
 }) => {
   const isIndeterminate = indeterminate || total === 0;
-  const percent = isIndeterminate ? 0 : total > 0 ? Math.round((current / total) * 100) : 0;
+  const hasByteTotal = bytesProcessed !== undefined && bytesTotal !== undefined && bytesTotal > 0;
+  const percent = isIndeterminate
+    ? 0
+    : hasByteTotal
+      ? Math.round((bytesProcessed! / bytesTotal!) * 100)
+      : total > 0 ? Math.round((current / total) * 100) : 0;
   const hasBytes = bytesProcessed !== undefined && bytesTotal !== undefined;
   const verb = OPERATION_VERB[operation];
   const icon = OPERATION_ICON[operation];

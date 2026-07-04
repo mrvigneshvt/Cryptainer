@@ -65,6 +65,15 @@ describe('ProgressBar', () => {
     expect(fill).toHaveStyle({ width: '25%' })
   })
 
+  it('uses byte-weighted percent when bytesTotal is known', () => {
+    render(
+      <ProgressBar operation="encrypt" current={0} total={2}
+        bytesProcessed={135_000_000} bytesTotal={200_000_000} />
+    );
+    // 135/200 = 67.5% -> 68%, NOT 0% (current/total = 0/2)
+    expect(screen.getByText('68%')).toBeInTheDocument();
+  })
+
   // ── Indeterminate mode ──────────────────────────────────────────────
 
   it('renders indeterminate shimmer when indeterminate prop is true', () => {
