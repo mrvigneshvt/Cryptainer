@@ -6,6 +6,7 @@
 use crate::crypto::{self, KdfParams, SALT_LEN};
 use crate::error::CryptoError;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// All metadata stored in plaintext in SQLite.
 /// Never includes encrypted content or key material.
@@ -199,6 +200,52 @@ pub fn compute_v2_layout(
     Ok((enc_meta, meta_nonce))
 }
 
+pub const ENCRYPT_CHUNK_SIZE: usize = 2 * 1024 * 1024;
+
+/// Read `path` in `chunk_size` blocks, sealing each block with AES-256-GCM
+/// under its own random nonce. Returns the concatenated ciphertext (chunk
+/// ciphertexts laid end to end), the per-chunk metadata (offsets relative to
+/// the concatenation start), the SHA-256 of the whole plaintext, and the
+/// total plaintext length. `progress` is called with cumulative plaintext
+/// bytes processed after each chunk.
+pub fn encrypt_file_chunked(
+    path: &std::path::Path,
+    key: &[u8; 32],
+    chunk_size: usize,
+    progress: &mut dyn FnMut(u64),
+) -> Result<(Vec<u8>, Vec<ChunkMetadata>, String, u64), CryptoError> {
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut out: Vec<u8> = Vec::new();
+    let mut chunks: Vec<ChunkMetadata> = Vec::new();
+    let mut buf = vec![0u8; chunk_size];
+    let mut total: u64 = 0;
+
+    loop {
+        // Fill buf up to chunk_size or EOF (handle short reads).
+        let mut filled = 0;
+        while filled < buf.len() {
+            match file.read(&mut buf[filled..])? {
+                0 => break,
+                n => filled += n,
+            }
+        }
+        if filled == 0 {
+            break;
+        }
+        hasher.update(&buf[..filled]);
+        let (ct, nonce) = crypto::encrypt_section(&buf[..filled], key)?;
+        chunks.push(ChunkMetadata { offset: out.len() as u64, nonce, size: filled as u64 });
+        out.extend_from_slice(&ct);
+        total += filled as u64;
+        progress(total);
+    }
+
+    let sha = hex::encode(hasher.finalize());
+    Ok((out, chunks, sha, total))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -342,5 +389,35 @@ mod tests {
             format_version: 1,
         };
         assert_eq!(meta.format_version, 1);
+    }
+
+    #[test]
+    fn encrypt_file_chunked_roundtrips_and_reports_progress() {
+        use std::io::Write;
+        let key = [3u8; 32];
+        // 5000 bytes, chunk size 2048 -> 3 chunks (2048, 2048, 904)
+        let plaintext: Vec<u8> = (0..5000u32).map(|i| (i % 251) as u8).collect();
+        let dir = std::env::temp_dir().join(format!("ctnr_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("blob.bin");
+        std::fs::File::create(&path).unwrap().write_all(&plaintext).unwrap();
+
+        let mut ticks: Vec<u64> = Vec::new();
+        let (ct, chunks, sha, len) =
+            encrypt_file_chunked(&path, &key, 2048, &mut |done| ticks.push(done)).unwrap();
+
+        assert_eq!(len, 5000);
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(ticks, vec![2048, 4096, 5000]); // progress after each chunk
+        assert_eq!(sha, crypto::sha256_hex(&plaintext));
+
+        // Reconstruct a FileMetadata and roundtrip through decrypt_file
+        let fm = FileMetadata {
+            id: "t".into(), name: "t".into(), mime: "".into(), size: len, offset: 0,
+            data_nonce: [0u8; 12], sha256: sha, chunks: Some(chunks),
+        };
+        assert_eq!(decrypt_file(&ct, &fm, &key).unwrap(), plaintext);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
