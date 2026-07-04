@@ -32,8 +32,10 @@ describe('ProgressOverlay', () => {
 
   it('shows fallbackMessage when progress is null', () => {
     render(
-      <ProgressOverlay open={true} progress={null} fallbackMessage="Preparing\u2026" />
+      <ProgressOverlay open={true} progress={null} fallbackMessage="Preparing…" />
     );
-    expect(screen.getByText((content) => content.includes('Preparing'))).toBeInTheDocument();
+    // Assert the exact rendered text: a raw `…` in a JSX attribute renders
+    // literally, so a loose substring match would let that regression pass.
+    expect(screen.getByText('Preparing…')).toBeInTheDocument();
   });
 });

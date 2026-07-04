@@ -188,7 +188,7 @@ export const Step2Config: React.FC<Step2ConfigProps> = ({
           disabled={isLoading}
         >
           {isLoading ? (
-            <><span className="step2-spinner" /> Encrypting\u2026</>
+            <><span className="step2-spinner" /> Encrypting…</>
           ) : (
             <>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

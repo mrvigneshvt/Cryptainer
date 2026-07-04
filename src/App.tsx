@@ -597,7 +597,7 @@ function App() {
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
       />
-      <ProgressOverlay open={isImporting || isExporting} progress={appProgress} fallbackMessage="Processing\u2026" />
+      <ProgressOverlay open={isImporting || isExporting} progress={appProgress} fallbackMessage="Processing…" />
     </div>
   );
 }

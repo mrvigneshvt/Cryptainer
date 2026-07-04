@@ -175,7 +175,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
           ))}
         </div>
       </div>
-      <ProgressOverlay open={isDownloading} progress={progress} fallbackMessage="Downloading files\u2026" />
+      <ProgressOverlay open={isDownloading} progress={progress} fallbackMessage="Downloading files…" />
 
       {/* Action buttons */}
       <div className="download-actions">

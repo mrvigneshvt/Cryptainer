@@ -96,7 +96,7 @@ export const CreateWizard: React.FC<CreateWizardProps> = ({ onClose }) => {
           />
         )}
       </div>
-      <ProgressOverlay open={isLoading} progress={progress} fallbackMessage="Encrypting files\u2026" />
+      <ProgressOverlay open={isLoading} progress={progress} fallbackMessage="Encrypting files…" />
     </Modal>
   );
 };
