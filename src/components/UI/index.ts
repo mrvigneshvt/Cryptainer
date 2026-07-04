@@ -7,3 +7,5 @@ export { ThemeToggle } from './ThemeToggle';
 export { ConfirmModal } from './ConfirmModal';
 export { ProgressBar } from './ProgressBar';
 export type { ProgressBarProps } from './ProgressBar';
+export { ProgressOverlay } from './ProgressOverlay';
+export type { ProgressOverlayProps } from './ProgressOverlay';

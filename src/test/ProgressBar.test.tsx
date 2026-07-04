@@ -148,6 +148,12 @@ describe('ProgressBar', () => {
 
     rerender(<ProgressBar operation="migrate" current={0} total={0} indeterminate />)
     expect(screen.getByText('Migrating…')).toBeInTheDocument()
+
+    rerender(<ProgressBar operation="import" current={0} total={0} indeterminate />)
+    expect(screen.getByText('Importing')).toBeInTheDocument()
+
+    rerender(<ProgressBar operation="export" current={0} total={0} indeterminate />)
+    expect(screen.getByText('Exporting')).toBeInTheDocument()
   })
 
   // ── Zero total edge case ────────────────────────────────────────────
