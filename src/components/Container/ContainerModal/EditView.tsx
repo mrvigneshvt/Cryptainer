@@ -185,7 +185,7 @@ export const EditView: React.FC<EditViewProps> = ({
           disabled={!password || !hasChanges || isLoading}
         >
           {isLoading ? (
-            <span className="edit-spinner">Saving\u2026</span>
+            <><span className="edit-spinner" /> Saving\u2026</>
           ) : (
             <>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">

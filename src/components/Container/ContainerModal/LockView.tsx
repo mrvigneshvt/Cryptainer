@@ -114,7 +114,7 @@ export const LockView: React.FC<LockViewProps> = ({
           disabled={isLoading}
         >
           {isLoading ? (
-            <span className="lock-spinner">Unlocking\u2026</span>
+            <><span className="lock-spinner" /> Unlocking\u2026</>
           ) : (
             <>
               <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
