@@ -60,7 +60,12 @@ export const EditView: React.FC<EditViewProps> = ({
 
   const handleAddFiles = async () => {
     const picked = await pickFiles();
-    if (picked.length) setNewFiles(prev => [...prev, ...picked]);
+    if (picked.length) {
+      setNewFiles(prev => {
+        const seen = new Set(prev.map(f => f.path));
+        return [...prev, ...picked.filter(f => !seen.has(f.path))];
+      });
+    }
   };
 
   const removeNewFile = (path: string) => {

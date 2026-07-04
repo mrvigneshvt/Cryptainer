@@ -16,7 +16,12 @@ export const Step1Files: React.FC<Step1FilesProps> = ({ onNext }) => {
 
   const handleAddFiles = async () => {
     const picked = await pickFiles();
-    if (picked.length) setFiles(prev => [...prev, ...picked]);
+    if (picked.length) {
+      setFiles(prev => {
+        const seen = new Set(prev.map(f => f.path));
+        return [...prev, ...picked.filter(f => !seen.has(f.path))];
+      });
+    }
   };
 
   const removeFile = (path: string) => {

@@ -50,6 +50,23 @@ describe('Step1Files', () => {
     expect(screen.queryByText('doc.pdf')).not.toBeInTheDocument();
   });
 
+  it('drops duplicate paths when the same file is picked again', async () => {
+    open.mockResolvedValueOnce(['/home/u/doc.pdf']);
+    open.mockResolvedValueOnce(['/home/u/doc.pdf', '/home/u/img.png']);
+    const user = userEvent.setup();
+    render(<Step1Files onNext={vi.fn()} />);
+
+    await user.click(screen.getByRole('button', { name: /add files/i }));
+    expect(await screen.findByText('doc.pdf')).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /add files/i }));
+    expect(await screen.findByText('img.png')).toBeInTheDocument();
+
+    // doc.pdf should appear once despite being returned by the picker twice.
+    expect(screen.getAllByText('doc.pdf')).toHaveLength(1);
+    expect(screen.getByText(/2 files selected/i)).toBeInTheDocument();
+  });
+
   it('blocks advancing with no files selected', async () => {
     const onNext = vi.fn();
     const user = userEvent.setup();

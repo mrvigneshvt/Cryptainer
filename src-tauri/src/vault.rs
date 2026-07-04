@@ -214,6 +214,7 @@ pub fn encrypt_file_chunked(
     chunk_size: usize,
     progress: &mut dyn FnMut(u64),
 ) -> Result<(Vec<u8>, Vec<ChunkMetadata>, String, u64), CryptoError> {
+    debug_assert!(chunk_size > 0, "chunk_size must be non-zero");
     use std::io::Read;
     let mut file = std::fs::File::open(path)?;
     let mut hasher = Sha256::new();
