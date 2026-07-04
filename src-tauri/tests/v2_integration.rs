@@ -2,6 +2,7 @@
 
 use cryptainer_lib::crypto;
 use cryptainer_lib::crypto::KdfParams;
+use cryptainer_lib::vault;
 use cryptainer_lib::vault::{ContainerMetadataV2, FileMetadata, VaultFile, ContainerPayload};
 use rand::RngCore;
 
@@ -435,6 +436,103 @@ fn v2_recovers_wrong_offset_blob() {
 
         cumulative += correct_fm.size as usize + 16;
     }
+}
+
+/// Mirrors `create_container`'s streaming assembly: two files are encrypted from
+/// disk with `encrypt_file_chunked` (chunked layout, `data_nonce: [0;12]`), laid
+/// out with `compute_v2_layout`, and assembled into the exact v2 blob format
+/// (`salt ‖ meta_len(u32 LE) ‖ meta_nonce ‖ enc_meta ‖ part0 ‖ part1`). It then
+/// recovers the SECOND file using read-side offset recovery
+/// (`file_encrypted_len` of the prior file) and `decrypt_file`, asserting the
+/// recovered bytes equal the original file-2 bytes. A minimal fixed key is used
+/// (no KDF) because this exercises blob assembly, not key derivation.
+#[test]
+fn create_container_streaming_roundtrips_two_files() {
+    use std::io::Write;
+
+    // Fixed key — testing blob assembly, not the KDF.
+    let key = [0x5Au8; 32];
+
+    // Two temp files with distinct, known bytes.
+    let dir = std::env::temp_dir().join(format!(
+        "ctnr_create_stream_{}_{}",
+        std::process::id(),
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_nanos())
+            .unwrap_or(0),
+    ));
+    std::fs::create_dir_all(&dir).unwrap();
+
+    let file1_bytes: Vec<u8> = (0..1234u32).map(|i| (i % 251) as u8).collect();
+    let file2_bytes: Vec<u8> = (0..4321u32).map(|i| ((i * 7 + 3) % 253) as u8).collect();
+    let inputs: Vec<(&str, &str, &[u8])> = vec![
+        ("first.bin", "application/octet-stream", &file1_bytes),
+        ("second.bin", "application/octet-stream", &file2_bytes),
+    ];
+    let mut paths = Vec::new();
+    for (name, _, bytes) in &inputs {
+        let p = dir.join(name);
+        std::fs::File::create(&p).unwrap().write_all(bytes).unwrap();
+        paths.push(p);
+    }
+
+    // Encrypt each file individually (streamed from disk), building chunked metadata
+    // exactly as create_container now does.
+    let mut files_meta: Vec<FileMetadata> = Vec::new();
+    let mut encrypted_parts: Vec<Vec<u8>> = Vec::new();
+    for (i, (name, mime, _)) in inputs.iter().enumerate() {
+        let (encrypted, chunks, sha256, plaintext_len) = vault::encrypt_file_chunked(
+            &paths[i], &key, vault::ENCRYPT_CHUNK_SIZE, &mut |_| {},
+        )
+        .unwrap();
+        files_meta.push(FileMetadata {
+            id: uuid::Uuid::new_v4().to_string(),
+            name: name.to_string(),
+            mime: mime.to_string(),
+            size: plaintext_len,
+            offset: 0,
+            data_nonce: [0u8; 12], // unused for chunked files
+            sha256,
+            chunks: Some(chunks),
+        });
+        encrypted_parts.push(encrypted);
+    }
+
+    // Compute the layout (fills offsets) and assemble the blob EXACTLY as create_container.
+    let (enc_meta, meta_nonce) =
+        vault::compute_v2_layout(&key, &mut files_meta, &encrypted_parts).unwrap();
+
+    let salt = [0u8; crypto::SALT_LEN];
+    let mut blob = Vec::new();
+    blob.extend_from_slice(&salt);
+    blob.extend_from_slice(&(enc_meta.len() as u32).to_le_bytes());
+    blob.extend_from_slice(&meta_nonce);
+    blob.extend_from_slice(&enc_meta);
+    for ef in &encrypted_parts {
+        blob.extend_from_slice(ef);
+    }
+
+    // Recover the SECOND file via read-side offset recovery + decrypt_file.
+    let meta_len = u32::from_le_bytes(
+        blob[crypto::SALT_LEN..crypto::SALT_LEN + 4].try_into().unwrap(),
+    ) as usize;
+    let prior_sum = vault::file_encrypted_len(&files_meta[0]);
+    let offset = crypto::SALT_LEN + 4 + crypto::NONCE_LEN + meta_len + prior_sum;
+    let section_len = vault::file_encrypted_len(&files_meta[1]);
+    assert!(
+        offset + section_len <= blob.len(),
+        "recovered offset {} out of bounds",
+        offset,
+    );
+    let section = &blob[offset..offset + section_len];
+    let recovered = vault::decrypt_file(section, &files_meta[1], &key).unwrap();
+
+    assert_eq!(recovered, file2_bytes, "recovered file-2 bytes must match original");
+    assert_eq!(files_meta[1].size, file2_bytes.len() as u64);
+    assert_eq!(crypto::sha256_hex(&recovered), files_meta[1].sha256);
+
+    std::fs::remove_dir_all(&dir).ok();
 }
 
 /// Regression: removing a non-trailing file from a v2 container must NOT corrupt

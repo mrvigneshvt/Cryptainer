@@ -35,11 +35,12 @@ pub struct CreateContainerInput {
     pub files:      Vec<FileInput>,
 }
 
-#[derive(serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct FileInput {
+    pub path: String,   // absolute path to the source file on disk
     pub name: String,
     pub mime: String,
-    pub data: Vec<u8>,  // raw bytes from frontend
+    pub size: u64,      // plaintext size in bytes (from the frontend's file picker)
 }
 
 /// Progress payload emitted via Tauri events during crypto operations.
@@ -127,37 +128,44 @@ pub async fn create_container(
     rand::rngs::OsRng.fill_bytes(&mut salt);
     let key = crypto::derive_key(&password, &salt, &input.kdf_params)?;
 
-    // 2. Encrypt each file individually, collect metadata (offsets filled later)
-    let total_size: u64 = input.files.iter().map(|f| f.data.len() as u64).sum();
+    // 2. Encrypt each file individually (streamed from disk), collect metadata.
+    // Every file is chunked (`chunks: Some`, `data_nonce: [0;12]` unused); byte
+    // progress is emitted per chunk so large files show smooth movement.
+    let total_size: u64 = input.files.iter().map(|f| f.size).sum();
     let total_files = input.files.len() as u64;
     let mut files_meta: Vec<FileMetadata> = Vec::with_capacity(input.files.len());
     let mut encrypted_files: Vec<Vec<u8>> = Vec::with_capacity(input.files.len());
     let mut cumulative_bytes: u64 = 0;
 
     for (i, f) in input.files.iter().enumerate() {
-        emit_progress(&app, ProgressPayload {
-            operation: "encrypt".into(),
-            current: i as u64,
-            total: total_files,
-            file_name: Some(f.name.clone()),
-            bytes_processed: cumulative_bytes,
-            bytes_total: total_size,
-            message: format!("Encrypting {} ({} / {})", f.name, i + 1, total_files),
-        });
-        let sha256 = crypto::sha256_hex(&f.data);
-        let (encrypted, nonce) = crypto::encrypt_section(&f.data, &key)?;
+        let base = cumulative_bytes;
+        let mut emit = |done_in_file: u64| {
+            emit_progress(&app, ProgressPayload {
+                operation: "encrypt".into(),
+                current: i as u64,
+                total: total_files,
+                file_name: Some(f.name.clone()),
+                bytes_processed: base + done_in_file,
+                bytes_total: total_size,
+                message: format!("Encrypting {} ({} / {})", f.name, i + 1, total_files),
+            });
+        };
+        emit(0); // show the file starting before the first chunk
+        let (encrypted, chunks, sha256, plaintext_len) = vault::encrypt_file_chunked(
+            std::path::Path::new(&f.path), &key, vault::ENCRYPT_CHUNK_SIZE, &mut emit,
+        )?;
         files_meta.push(FileMetadata {
             id: Uuid::new_v4().to_string(),
             name: f.name.clone(),
             mime: f.mime.clone(),
-            size: f.data.len() as u64,
+            size: plaintext_len,
             offset: 0,
-            data_nonce: nonce,
+            data_nonce: [0u8; 12], // unused for chunked files
             sha256,
-            chunks: None,
+            chunks: Some(chunks),
         });
         encrypted_files.push(encrypted);
-        cumulative_bytes += f.data.len() as u64;
+        cumulative_bytes += plaintext_len;
     }
 
     // Final encrypt progress (all files done)
@@ -704,12 +712,15 @@ async fn save_edits_v1(
         let mut modified_payload = session.payload.clone();
         modified_payload.files.retain(|f| !file_ids_to_remove.contains(&f.id));
         for f in &files_to_add {
+            // FileInput now carries a path, not bytes — read the source file.
+            // (Legacy v1 flow keeps whole-file behavior; no chunking here.)
+            let bytes = std::fs::read(&f.path)?;
             modified_payload.files.push(VaultFile {
                 id: Uuid::new_v4().to_string(),
                 name: f.name.clone(),
                 mime: f.mime.clone(),
-                size: f.data.len() as u64,
-                data: f.data.clone(),
+                size: bytes.len() as u64,
+                data: bytes,
             });
         }
 
@@ -842,6 +853,9 @@ async fn save_edits_v2(
     }
 
     // Encrypt new files
+    // TODO(Task 5): stream from path via encrypt_file_chunked (chunked layout +
+    // per-chunk byte progress). For now this reads the whole file into memory and
+    // whole-file-encrypts it to preserve current behavior after the FileInput change.
     for f in &files_to_add {
         emit_progress(&app, ProgressPayload {
             operation: "encrypt".into(),
@@ -852,19 +866,20 @@ async fn save_edits_v2(
             bytes_total: 0,
             message: format!("Encrypting {} ({} / {})", f.name, progress_idx + 1, total_ops),
         });
-        let sha256 = crypto::sha256_hex(&f.data);
-        let (enc, nonce) = crypto::encrypt_section(&f.data, &key_arr)?;
+        let bytes = std::fs::read(&f.path)?;
+        let sha256 = crypto::sha256_hex(&bytes);
+        let (enc, nonce) = crypto::encrypt_section(&bytes, &key_arr)?;
         new_meta.push(FileMetadata {
             id: Uuid::new_v4().to_string(),
             name: f.name.clone(),
             mime: f.mime.clone(),
-            size: f.data.len() as u64,
+            size: bytes.len() as u64,
             offset: 0,
             data_nonce: nonce,
             sha256,
             chunks: None,
         });
-        total_size += f.data.len() as u64;
+        total_size += bytes.len() as u64;
         encrypted_parts.push(enc);
         progress_idx += 1;
     }
