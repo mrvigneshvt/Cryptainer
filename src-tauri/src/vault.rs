@@ -74,6 +74,31 @@ pub struct ChunkMetadata {
     pub size: u64,
 }
 
+/// Decrypt a file's data section (bytes already read from the blob at the
+/// file's offset), handling both whole-file (`chunks: None`) and chunked
+/// (`chunks: Some`) layouts. Chunk offsets are relative to `section` start.
+pub fn decrypt_file(
+    section: &[u8],
+    fm: &FileMetadata,
+    key: &[u8; 32],
+) -> Result<Vec<u8>, CryptoError> {
+    match &fm.chunks {
+        None => crypto::decrypt_section(section, key, &fm.data_nonce),
+        Some(chunks) => {
+            let mut out = Vec::with_capacity(fm.size as usize);
+            for c in chunks {
+                let start = c.offset as usize;
+                let end = start + c.size as usize + 16;
+                if end > section.len() {
+                    return Err(CryptoError::IntegrityFailure);
+                }
+                out.extend_from_slice(&crypto::decrypt_section(&section[start..end], key, &c.nonce)?);
+            }
+            Ok(out)
+        }
+    }
+}
+
 /// On-disk encrypted length of a file's data section (ciphertext + GCM tags).
 /// Whole-file layout: plaintext size + one 16-byte tag.
 /// Chunked layout: sum over chunks of (chunk size + 16-byte tag).
@@ -230,6 +255,34 @@ mod tests {
         };
         // two chunks: (60+16) + (40+16)
         assert_eq!(file_encrypted_len(&chunked), 76 + 56);
+    }
+
+    #[test]
+    fn decrypt_file_handles_chunked_and_whole() {
+        let key = [7u8; 32];
+
+        // whole-file
+        let (ct_whole, nonce) = crypto::encrypt_section(b"hello world", &key).unwrap();
+        let fm_whole = FileMetadata {
+            id: "w".into(), name: "w".into(), mime: "".into(), size: 11, offset: 0,
+            data_nonce: nonce, sha256: String::new(), chunks: None,
+        };
+        assert_eq!(decrypt_file(&ct_whole, &fm_whole, &key).unwrap(), b"hello world");
+
+        // chunked: two chunks "hello" + " world" concatenated on disk
+        let (c0, n0) = crypto::encrypt_section(b"hello", &key).unwrap();
+        let (c1, n1) = crypto::encrypt_section(b" world", &key).unwrap();
+        let mut section = Vec::new();
+        section.extend_from_slice(&c0);
+        section.extend_from_slice(&c1);
+        let fm_chunked = FileMetadata {
+            chunks: Some(vec![
+                ChunkMetadata { offset: 0, nonce: n0, size: 5 },
+                ChunkMetadata { offset: c0.len() as u64, nonce: n1, size: 6 },
+            ]),
+            ..fm_whole.clone()
+        };
+        assert_eq!(decrypt_file(&section, &fm_chunked, &key).unwrap(), b"hello world");
     }
 
     #[test]
