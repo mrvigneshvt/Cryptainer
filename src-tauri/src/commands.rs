@@ -1022,8 +1022,8 @@ pub async fn export_container(
         operation: "export".into(),
         current: 0, total: 0,
         file_name: Some(meta.name.clone()),
-        bytes_processed: ctnr_bytes.len() as u64,
-        bytes_total: ctnr_bytes.len() as u64,
+        bytes_processed: 0,
+        bytes_total: 0,
         message: "Writing export file\u{2026}".into(),
     });
 
@@ -1079,8 +1079,8 @@ pub async fn import_container(
         operation: "import".into(),
         current: 0, total: 0,
         file_name: Some(header.name.clone()),
-        bytes_processed: blob.len() as u64,
-        bytes_total: blob.len() as u64,
+        bytes_processed: 0,
+        bytes_total: 0,
         message: "Writing imported container\u{2026}".into(),
     });
     std::fs::write(&blob_path, &blob)?;
