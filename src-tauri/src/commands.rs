@@ -413,7 +413,7 @@ fn convert_v1_to_v2(
     }).collect();
 
     for f in &payload.files {
-        let sha256 = crypto::sha256_hex(&f.data);
+        let sha256 = String::new();
         let (encrypted, nonce) = crypto::encrypt_section(&f.data, &key)?;
         files_meta.push(FileMetadata {
             id: f.id.clone(),
