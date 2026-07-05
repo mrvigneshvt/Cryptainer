@@ -73,6 +73,44 @@ pub fn serialize(meta: &ContainerMeta, blob: &[u8]) -> Result<Vec<u8>> {
     Ok(out)
 }
 
+/// Write .ctnr format to a writer, streaming the blob from disk (no full-Vec buffer).
+pub fn write_ctnr<W: std::io::Write>(
+    writer: &mut W,
+    meta: &ContainerMeta,
+    blob_path: &std::path::Path,
+) -> Result<()> {
+    let header = ContainerHeader {
+        id: meta.id.clone(),
+        name: meta.name.clone(),
+        algo: meta.algo.clone(),
+        kdf: meta.kdf_params.kdf.clone(),
+        kdf_params: serde_json::to_value(&meta.kdf_params)?,
+        hint: meta.hint.clone(),
+        tags: meta.tags.clone(),
+        file_count: meta.file_count,
+        total_size: meta.total_size,
+        created_at: meta.created_at.clone(),
+        modified_at: meta.modified_at.clone(),
+        blob_sha256: meta.blob_sha256.clone(),
+        format_version: meta.format_version,
+    };
+
+    let header_json = serde_json::to_vec(&header)?;
+    let header_len = u32::try_from(header_json.len())
+        .map_err(|_| CryptoError::InvalidFormat("Header too large".into()))?;
+
+    writer.write_all(MAGIC)?;
+    writer.write_all(&[NULL, VERSION])?;
+    writer.write_all(&header_len.to_le_bytes())?;
+    writer.write_all(&header_json)?;
+
+    // Stream-copy blob file — no full-Vec buffer needed
+    let mut blob_file = std::fs::File::open(blob_path)?;
+    std::io::copy(&mut blob_file, writer)?;
+
+    Ok(())
+}
+
 /// Parse a .ctnr binary file into its header and blob.
 pub fn deserialize(data: &[u8]) -> Result<(ContainerHeader, Vec<u8>)> {
     // Validate magic bytes
