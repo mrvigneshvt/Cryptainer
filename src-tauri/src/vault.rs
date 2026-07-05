@@ -6,6 +6,7 @@
 use crate::crypto::{self, KdfParams, SALT_LEN};
 use crate::error::CryptoError;
 use serde::{Deserialize, Serialize};
+use sha2::{Digest, Sha256};
 
 /// All metadata stored in plaintext in SQLite.
 /// Never includes encrypted content or key material.
@@ -72,6 +73,49 @@ pub struct ChunkMetadata {
     pub offset: u64,
     pub nonce: [u8; 12],
     pub size: u64,
+}
+
+/// Decrypt a file's data section (bytes already read from the blob at the
+/// file's offset), handling both whole-file (`chunks: None`) and chunked
+/// (`chunks: Some`) layouts. Chunk offsets are relative to `section` start.
+pub fn decrypt_file(
+    section: &[u8],
+    fm: &FileMetadata,
+    key: &[u8; 32],
+) -> Result<Vec<u8>, CryptoError> {
+    match &fm.chunks {
+        None => crypto::decrypt_section(section, key, &fm.data_nonce),
+        Some(chunks) => {
+            let mut out = Vec::with_capacity(fm.size as usize);
+            for c in chunks {
+                let start = c.offset as usize;
+                // Checked arithmetic: a hostile/corrupt chunk with an absurd
+                // offset/size (near usize::MAX) must not wrap `end` to a small
+                // value that slips past the bounds guard below. Overflow ==
+                // corruption. With checked_add, end >= start always holds, so
+                // the slice `section[start..end]` can never have start > end.
+                let end = start
+                    .checked_add(c.size as usize)
+                    .and_then(|v| v.checked_add(16))
+                    .ok_or(CryptoError::IntegrityFailure)?;
+                if end > section.len() {
+                    return Err(CryptoError::IntegrityFailure);
+                }
+                out.extend_from_slice(&crypto::decrypt_section(&section[start..end], key, &c.nonce)?);
+            }
+            Ok(out)
+        }
+    }
+}
+
+/// On-disk encrypted length of a file's data section (ciphertext + GCM tags).
+/// Whole-file layout: plaintext size + one 16-byte tag.
+/// Chunked layout: sum over chunks of (chunk size + 16-byte tag).
+pub fn file_encrypted_len(fm: &FileMetadata) -> usize {
+    match &fm.chunks {
+        Some(chunks) => chunks.iter().map(|c| c.size as usize + 16).sum(),
+        None => fm.size as usize + 16,
+    }
 }
 
 /// A single audit log event returned by `list_audit_events`.
@@ -156,6 +200,53 @@ pub fn compute_v2_layout(
     Ok((enc_meta, meta_nonce))
 }
 
+pub const ENCRYPT_CHUNK_SIZE: usize = 2 * 1024 * 1024;
+
+/// Read `path` in `chunk_size` blocks, sealing each block with AES-256-GCM
+/// under its own random nonce. Returns the concatenated ciphertext (chunk
+/// ciphertexts laid end to end), the per-chunk metadata (offsets relative to
+/// the concatenation start), the SHA-256 of the whole plaintext, and the
+/// total plaintext length. `progress` is called with cumulative plaintext
+/// bytes processed after each chunk.
+pub fn encrypt_file_chunked(
+    path: &std::path::Path,
+    key: &[u8; 32],
+    chunk_size: usize,
+    progress: &mut dyn FnMut(u64),
+) -> Result<(Vec<u8>, Vec<ChunkMetadata>, String, u64), CryptoError> {
+    debug_assert!(chunk_size > 0, "chunk_size must be non-zero");
+    use std::io::Read;
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+    let mut out: Vec<u8> = Vec::new();
+    let mut chunks: Vec<ChunkMetadata> = Vec::new();
+    let mut buf = vec![0u8; chunk_size];
+    let mut total: u64 = 0;
+
+    loop {
+        // Fill buf up to chunk_size or EOF (handle short reads).
+        let mut filled = 0;
+        while filled < buf.len() {
+            match file.read(&mut buf[filled..])? {
+                0 => break,
+                n => filled += n,
+            }
+        }
+        if filled == 0 {
+            break;
+        }
+        hasher.update(&buf[..filled]);
+        let (ct, nonce) = crypto::encrypt_section(&buf[..filled], key)?;
+        chunks.push(ChunkMetadata { offset: out.len() as u64, nonce, size: filled as u64 });
+        out.extend_from_slice(&ct);
+        total += filled as u64;
+        progress(total);
+    }
+
+    let sha = hex::encode(hasher.finalize());
+    Ok((out, chunks, sha, total))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -203,6 +294,85 @@ mod tests {
     }
 
     #[test]
+    fn file_encrypted_len_whole_vs_chunked() {
+        let base = FileMetadata {
+            id: "x".into(), name: "a".into(), mime: "application/octet-stream".into(),
+            size: 100, offset: 0, data_nonce: [0u8; 12], sha256: String::new(), chunks: None,
+        };
+        // whole file: plaintext + one 16-byte tag
+        assert_eq!(file_encrypted_len(&base), 100 + 16);
+
+        let chunked = FileMetadata {
+            chunks: Some(vec![
+                ChunkMetadata { offset: 0,  nonce: [0u8; 12], size: 60 },
+                ChunkMetadata { offset: 76, nonce: [0u8; 12], size: 40 },
+            ]),
+            ..base
+        };
+        // two chunks: (60+16) + (40+16)
+        assert_eq!(file_encrypted_len(&chunked), 76 + 56);
+    }
+
+    #[test]
+    fn decrypt_file_handles_chunked_and_whole() {
+        let key = [7u8; 32];
+
+        // whole-file
+        let (ct_whole, nonce) = crypto::encrypt_section(b"hello world", &key).unwrap();
+        let fm_whole = FileMetadata {
+            id: "w".into(), name: "w".into(), mime: "".into(), size: 11, offset: 0,
+            data_nonce: nonce, sha256: String::new(), chunks: None,
+        };
+        assert_eq!(decrypt_file(&ct_whole, &fm_whole, &key).unwrap(), b"hello world");
+
+        // chunked: two chunks "hello" + " world" concatenated on disk
+        let (c0, n0) = crypto::encrypt_section(b"hello", &key).unwrap();
+        let (c1, n1) = crypto::encrypt_section(b" world", &key).unwrap();
+        let mut section = Vec::new();
+        section.extend_from_slice(&c0);
+        section.extend_from_slice(&c1);
+        let fm_chunked = FileMetadata {
+            chunks: Some(vec![
+                ChunkMetadata { offset: 0, nonce: n0, size: 5 },
+                ChunkMetadata { offset: c0.len() as u64, nonce: n1, size: 6 },
+            ]),
+            ..fm_whole.clone()
+        };
+        assert_eq!(decrypt_file(&section, &fm_chunked, &key).unwrap(), b"hello world");
+    }
+
+    #[test]
+    fn decrypt_file_rejects_malformed_chunk_metadata() {
+        let key = [7u8; 32];
+        let base = FileMetadata {
+            id: "m".into(), name: "m".into(), mime: "".into(), size: 0, offset: 0,
+            data_nonce: [0u8; 12], sha256: String::new(), chunks: None,
+        };
+
+        // Absurd size (u64::MAX) with a short section: the size + 16 arithmetic
+        // would overflow. Must return IntegrityFailure, NOT panic.
+        let fm_overflow = FileMetadata {
+            chunks: Some(vec![ChunkMetadata { offset: 0, nonce: [0u8; 12], size: u64::MAX }]),
+            ..base.clone()
+        };
+        let short_section = vec![0u8; 8];
+        assert!(matches!(
+            decrypt_file(&short_section, &fm_overflow, &key),
+            Err(CryptoError::IntegrityFailure)
+        ));
+
+        // Offset past the end of the section. Must return IntegrityFailure.
+        let fm_past_end = FileMetadata {
+            chunks: Some(vec![ChunkMetadata { offset: 1000, nonce: [0u8; 12], size: 5 }]),
+            ..base.clone()
+        };
+        assert!(matches!(
+            decrypt_file(&short_section, &fm_past_end, &key),
+            Err(CryptoError::IntegrityFailure)
+        ));
+    }
+
+    #[test]
     fn container_meta_default_format_version() {
         let meta = ContainerMeta {
             id: "x".into(),
@@ -220,5 +390,35 @@ mod tests {
             format_version: 1,
         };
         assert_eq!(meta.format_version, 1);
+    }
+
+    #[test]
+    fn encrypt_file_chunked_roundtrips_and_reports_progress() {
+        use std::io::Write;
+        let key = [3u8; 32];
+        // 5000 bytes, chunk size 2048 -> 3 chunks (2048, 2048, 904)
+        let plaintext: Vec<u8> = (0..5000u32).map(|i| (i % 251) as u8).collect();
+        let dir = std::env::temp_dir().join(format!("ctnr_test_{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("blob.bin");
+        std::fs::File::create(&path).unwrap().write_all(&plaintext).unwrap();
+
+        let mut ticks: Vec<u64> = Vec::new();
+        let (ct, chunks, sha, len) =
+            encrypt_file_chunked(&path, &key, 2048, &mut |done| ticks.push(done)).unwrap();
+
+        assert_eq!(len, 5000);
+        assert_eq!(chunks.len(), 3);
+        assert_eq!(ticks, vec![2048, 4096, 5000]); // progress after each chunk
+        assert_eq!(sha, crypto::sha256_hex(&plaintext));
+
+        // Reconstruct a FileMetadata and roundtrip through decrypt_file
+        let fm = FileMetadata {
+            id: "t".into(), name: "t".into(), mime: "".into(), size: len, offset: 0,
+            data_nonce: [0u8; 12], sha256: sha, chunks: Some(chunks),
+        };
+        assert_eq!(decrypt_file(&ct, &fm, &key).unwrap(), plaintext);
+
+        std::fs::remove_dir_all(&dir).ok();
     }
 }

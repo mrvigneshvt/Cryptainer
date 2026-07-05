@@ -1,6 +1,6 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { open } from '@tauri-apps/plugin-dialog';
-import { ProgressBar } from '../../UI';
+import { ProgressOverlay } from '../../UI';
 import { useTauriProgress } from '../../../hooks/useTauriProgress';
 import { useVaultStore } from '../../../store/vaultStore';
 import { useMediaQuery } from '../../../hooks/useMediaQuery';
@@ -175,20 +175,7 @@ export const DownloadView: React.FC<DownloadViewProps> = ({
           ))}
         </div>
       </div>
-
-      {/* Progress bar during download */}
-      {isDownloading && (
-        <ProgressBar
-          operation={progress?.operation ?? 'decrypt'}
-          current={progress?.current ?? 0}
-          total={progress?.total ?? files.length}
-          fileName={progress?.file_name ?? undefined}
-          bytesProcessed={progress?.bytes_processed}
-          bytesTotal={progress?.bytes_total}
-          message={progress?.message ?? 'Downloading…'}
-          indeterminate={!progress || progress.total === 0}
-        />
-      )}
+      <ProgressOverlay open={isDownloading} progress={progress} fallbackMessage="Downloading files…" />
 
       {/* Action buttons */}
       <div className="download-actions">

@@ -1,8 +1,7 @@
 import React from 'react';
 import './ProgressBar.css';
-
 export interface ProgressBarProps {
-  operation: 'encrypt' | 'decrypt' | 'derive-key' | 'write-blob' | 'read-blob' | 'migrate' | 'idle';
+  operation: 'encrypt' | 'decrypt' | 'derive-key' | 'write-blob' | 'read-blob' | 'migrate' | 'import' | 'export' | 'idle';
   current: number;
   total: number;
   fileName?: string;
@@ -18,23 +17,27 @@ export interface ProgressBarProps {
 }
 
 const OPERATION_VERB: Record<ProgressBarProps['operation'], string> = {
-  encrypt:    'Encrypting',
-  decrypt:    'Decrypting',
-  'derive-key': 'Deriving key\u2026',
-  'write-blob': 'Writing blob\u2026',
-  'read-blob':  'Reading blob\u2026',
-  migrate:    'Migrating\u2026',
-  idle:       '',
+  encrypt:       'Encrypting',
+  decrypt:       'Decrypting',
+  'derive-key':  'Deriving key\u2026',
+  'write-blob':  'Writing blob\u2026',
+  'read-blob':   'Reading blob\u2026',
+  migrate:       'Migrating\u2026',
+  import:        'Importing',
+  export:        'Exporting',
+  idle:          '',
 };
 
 const OPERATION_ICON: Record<ProgressBarProps['operation'], string> = {
-  encrypt:    '\u{1F512}',  // 🔒
-  decrypt:    '\u{1F4E5}',  // 📥
-  'derive-key': '\u{1F511}', // 🔑
-  'write-blob': '\u{1F4BE}', // 💾
-  'read-blob':  '\u{1F4C2}', // 📂
-  migrate:    '\u{1F504}',  // 🔄
-  idle:       '',
+  encrypt:       '\u{1F512}', // 🔒
+  decrypt:       '\u{1F4E5}', // 📥
+  'derive-key':  '\u{1F511}', // 🔑
+  'write-blob':  '\u{1F4BE}', // 💾
+  'read-blob':   '\u{1F4C2}', // 📂
+  migrate:       '\u{1F504}', // 🔄
+  import:        '\u{1F4E5}', // 📥
+  export:        '\u{1F4E4}', // 📤
+  idle:          '',
 };
 
 function formatBytes(bytes: number): string {
@@ -88,7 +91,12 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({
   compact,
 }) => {
   const isIndeterminate = indeterminate || total === 0;
-  const percent = isIndeterminate ? 0 : total > 0 ? Math.round((current / total) * 100) : 0;
+  const hasByteTotal = bytesProcessed !== undefined && bytesTotal !== undefined && bytesTotal > 0;
+  const percent = isIndeterminate
+    ? 0
+    : hasByteTotal
+      ? Math.round((bytesProcessed! / bytesTotal!) * 100)
+      : total > 0 ? Math.round((current / total) * 100) : 0;
   const hasBytes = bytesProcessed !== undefined && bytesTotal !== undefined;
   const verb = OPERATION_VERB[operation];
   const icon = OPERATION_ICON[operation];

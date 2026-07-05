@@ -4,13 +4,14 @@ import { useAuditStore } from './store/auditStore';
 import { CreateWizard } from './components/Container/CreateWizard';
 import { ContainerModal } from './components/Container/ContainerModal';
 import { Settings } from './components/Settings';
-import { ConfirmModal } from './components/UI';
+import { ConfirmModal, ProgressOverlay } from './components/UI';
 import { ThemeToggle } from './components/UI/ThemeToggle';
 import { TerminalShell } from './components/Terminal/TerminalShell';
 import { ActivityLogPanel } from './components/Audit/ActivityLogPanel';
 import { Splash } from './components/Splash/Splash';
 import { useThemeStore } from './store/themeStore';
 import { useAutoLock } from './hooks/useAutoLock';
+import { useTauriProgress } from './hooks/useTauriProgress';
 import { useMediaQuery } from './hooks/useMediaQuery';
 import { open, save } from '@tauri-apps/plugin-dialog';
 import type { ContainerMeta } from './types/vault';
@@ -94,9 +95,11 @@ function App() {
   const [showCreate, setShowCreate] = useState(false);
   const [activeContainer, setActiveContainer] = useState<ContainerMeta | null>(null);
   const [isImporting, setIsImporting] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
   const [activeNav, setActiveNav] = useState<NavSection>('containers');
   const [showSettings, setShowSettings] = useState(false);
   const [showAudit, setShowAudit] = useState(false);
+  const { progress: appProgress } = useTauriProgress(isImporting || isExporting);
   const { loadAuditEvents } = useAuditStore();
 
   // Responsive sidebar state
@@ -206,7 +209,14 @@ function App() {
         filters: [{ name: 'Cryptainer Export', extensions: ['ctnr'] }],
         defaultPath: `${container.name}.ctnr`
       });
-      if (path) await exportContainer(container.id, path);
+      if (path) {
+        setIsExporting(true);
+        try {
+          await exportContainer(container.id, path);
+        } finally {
+          setIsExporting(false);
+        }
+      }
     } catch { /* handled by vaultStore */ }
   };
 
@@ -587,6 +597,7 @@ function App() {
         onConfirm={handleConfirmDelete}
         onCancel={handleCancelDelete}
       />
+      <ProgressOverlay open={isImporting || isExporting} progress={appProgress} fallbackMessage="Processing…" />
     </div>
   );
 }

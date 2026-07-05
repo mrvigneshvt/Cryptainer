@@ -1,16 +1,32 @@
 import React, { useState } from 'react';
-import { DropZone } from '../../UI';
+import { usePickFiles } from '../../../hooks/usePickFiles';
+import type { FileInput } from '../../../types/vault';
 import { formatBytes } from '../../../utils/format';
 import './Step1Files.css';
 
 interface Step1FilesProps {
-  onNext: (data: { name: string; files: File[] }) => void;
+  onNext: (data: { name: string; files: FileInput[] }) => void;
 }
 
 export const Step1Files: React.FC<Step1FilesProps> = ({ onNext }) => {
   const [name, setName] = useState('');
-  const [files, setFiles] = useState<File[]>([]);
+  const [files, setFiles] = useState<FileInput[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const pickFiles = usePickFiles();
+
+  const handleAddFiles = async () => {
+    const picked = await pickFiles();
+    if (picked.length) {
+      setFiles(prev => {
+        const seen = new Set(prev.map(f => f.path));
+        return [...prev, ...picked.filter(f => !seen.has(f.path))];
+      });
+    }
+  };
+
+  const removeFile = (path: string) => {
+    setFiles(prev => prev.filter(f => f.path !== path));
+  };
 
   const handleNext = () => {
     if (!name.trim()) {
@@ -45,16 +61,41 @@ export const Step1Files: React.FC<Step1FilesProps> = ({ onNext }) => {
 
       <div className="step1-field">
         <label className="step1-label">Files to Encrypt</label>
-        <DropZone onFilesSelected={setFiles} existingFiles={files} />
+        <button type="button" className="step1-add-btn" onClick={handleAddFiles}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <line x1="12" y1="5" x2="12" y2="19" />
+            <line x1="5" y1="12" x2="19" y2="12" />
+          </svg>
+          Add files…
+        </button>
 
         {files.length > 0 && (
-          <div className="step1-files-summary">
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-            </svg>
-            <span>{files.length} file{files.length !== 1 ? 's' : ''} selected · {formatBytes(files.reduce((sum, f) => sum + f.size, 0))}</span>
-          </div>
+          <>
+            <div className="step1-file-list">
+              {files.map(file => (
+                <div key={file.path} className="step1-file-item">
+                  <span className="step1-file-name">{file.name}</span>
+                  <span className="step1-file-size">{formatBytes(file.size)}</span>
+                  <button
+                    type="button"
+                    className="step1-file-remove"
+                    onClick={() => removeFile(file.path)}
+                    aria-label={`Remove ${file.name}`}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+
+            <div className="step1-files-summary">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+              </svg>
+              <span>{files.length} file{files.length !== 1 ? 's' : ''} selected · {formatBytes(files.reduce((sum, f) => sum + f.size, 0))}</span>
+            </div>
+          </>
         )}
       </div>
 
