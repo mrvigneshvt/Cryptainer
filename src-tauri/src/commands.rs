@@ -639,11 +639,7 @@ fn get_file_data_v2(
 
     let plaintext = vault::decrypt_file(&encrypted, &fm, &key_arr)?;
 
-    // Verify SHA-256
-    let hash = crypto::sha256_hex(&plaintext);
-    if hash != fm.sha256 {
-        return Err(CryptoError::IntegrityFailure);
-    }
+    // GCM authenticated decrypt already verified integrity
 
     // Insert into cache
     {
