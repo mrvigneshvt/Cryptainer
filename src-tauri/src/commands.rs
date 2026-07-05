@@ -1048,9 +1048,9 @@ pub async fn export_container(
         bytes_processed: 0, bytes_total: 0,
         message: "Reading container for export\u{2026}".into(),
     });
-
-    let blob = std::fs::read(&meta.blob_path)?;
-    let ctnr_bytes = export::serialize(&meta, &blob)?;
+    // Stream-write .ctnr: header + blob copy (no full-Vec buffer)
+    let mut out_file = std::fs::File::create(&dest_path)?;
+    export::write_ctnr(&mut out_file, &meta, std::path::Path::new(&meta.blob_path))?;
 
     emit_progress(&app, ProgressPayload {
         operation: "export".into(),
@@ -1061,7 +1061,6 @@ pub async fn export_container(
         message: "Writing export file\u{2026}".into(),
     });
 
-    std::fs::write(&dest_path, ctnr_bytes)?;
     let details = serde_json::json!({ "dest_path": &dest_path }).to_string();
     record_audit(&pool, "export", Some(&container_id), Some(&meta.name), Some(&details));
     Ok(())
@@ -1075,26 +1074,33 @@ pub async fn import_container(
     app: AppHandle,
     pool: State<'_, sqlx::SqlitePool>,
 ) -> std::result::Result<ContainerMeta, CryptoError> {
-    let bytes = std::fs::read(&src_path)?;
+    // Streaming import: read header prefix, then copy blob with inline SHA-256
+    use std::io::{Read, Write};
+    use sha2::Digest;
+    let mut src_file = std::fs::File::open(&src_path)?;
+    let mut header_prefix = [0u8; 10];
+    src_file.read_exact(&mut header_prefix)?;
 
-    emit_progress(&app, ProgressPayload {
-        operation: "import".into(),
-        current: 0, total: 0,
-        file_name: None,
-        bytes_processed: 0, bytes_total: 0,
-        message: "Reading import file\u{2026}".into(),
-    });
-    let (header, blob) = export::deserialize(&bytes)?;
-
-    // Verify blob integrity
-    let actual_sha256 = crypto::sha256_hex(&blob);
-    if actual_sha256 != header.blob_sha256 {
-        return Err(CryptoError::IntegrityFailure);
+    // Validate magic + parse header length
+    if &header_prefix[0..4] != export::MAGIC {
+        return Err(CryptoError::InvalidFormat("Not a .ctnr file".into()));
     }
+    if header_prefix[4] != export::NULL {
+        return Err(CryptoError::InvalidFormat("Invalid null byte".into()));
+    }
+    if header_prefix[5] != export::VERSION {
+        return Err(CryptoError::InvalidFormat(format!(
+            "Unsupported version: {}. Expected {}", header_prefix[5], export::VERSION
+        )));
+    }
+    let header_len = u32::from_le_bytes(header_prefix[6..10].try_into().unwrap()) as usize;
 
-    // Check for duplicate ID before writing the blob, so a re-import fails
-    // cleanly with a friendly message instead of a cryptic UNIQUE-constraint
-    // SQL error — and without leaving an orphaned blob on disk.
+    // Read and parse header JSON
+    let mut header_json = vec![0u8; header_len];
+    src_file.read_exact(&mut header_json)?;
+    let header: export::ContainerHeader = serde_json::from_slice(&header_json)?;
+
+    // Check for duplicate ID before writing blob
     let existing = storage::get_container(&pool, &header.id).await;
     if existing.is_ok() {
         return Err(CryptoError::InvalidFormat(
@@ -1102,7 +1108,7 @@ pub async fn import_container(
         ));
     }
 
-    // Write blob to local blobs dir
+    // Derive blob path
     let blobs_dir = app.path().app_data_dir()
         .map_err(|e| CryptoError::Io(std::io::Error::other(e.to_string())))?
         .join("blobs");
@@ -1117,7 +1123,25 @@ pub async fn import_container(
         bytes_total: 0,
         message: "Writing imported container\u{2026}".into(),
     });
-    std::fs::write(&blob_path, &blob)?;
+
+    // Stream-copy blob body with inline SHA-256
+    let mut blob_file = std::fs::File::create(&blob_path)?;
+    let mut hasher = sha2::Sha256::new();
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let n = src_file.read(&mut buf)?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+        blob_file.write_all(&buf[..n])?;
+    }
+
+    // Verify blob integrity
+    let actual_sha256 = hex::encode(hasher.finalize());
+    if actual_sha256 != header.blob_sha256 {
+        // Clean up orphaned blob
+        let _ = std::fs::remove_file(&blob_path);
+        return Err(CryptoError::IntegrityFailure);
+    }
 
     let kdf_params: KdfParams = serde_json::from_value(header.kdf_params)?;
     let meta = ContainerMeta {
