@@ -103,8 +103,6 @@ fn verify_v2_blob(blob: &[u8], password: &str, params: &KdfParams, expected_data
         let pt = crypto::decrypt_section(&blob[off..off + enc_len], &*key, &fm.data_nonce)
             .unwrap_or_else(|_| panic!("Decryption failed for file {}", name));
         assert_eq!(pt, *original, "Data mismatch for file {}", name);
-        let hash = crypto::sha256_hex(&pt);
-        assert_eq!(hash, fm.sha256, "SHA-256 mismatch for file {}", name);
     }
 }
 
@@ -272,8 +270,7 @@ fn v2_multifile_roundtrip_production_layout() {
         let pt = crypto::decrypt_section(&blob[off..off + enc_len], &*key, &fm.data_nonce)
             .unwrap_or_else(|_| panic!("Decryption failed for {} at stored offset {}", name, off));
         assert_eq!(pt, *original, "Data mismatch for {}", name);
-        let hash = crypto::sha256_hex(&pt);
-        assert_eq!(hash, fm.sha256, "SHA-256 mismatch for {}", name);
+        // SHA-256 removed — GCM is canonical integrity proof
     }
 }
 
@@ -530,7 +527,7 @@ fn create_container_streaming_roundtrips_two_files() {
 
     assert_eq!(recovered, file2_bytes, "recovered file-2 bytes must match original");
     assert_eq!(files_meta[1].size, file2_bytes.len() as u64);
-    assert_eq!(crypto::sha256_hex(&recovered), files_meta[1].sha256);
+    // SHA-256 removed — GCM is canonical integrity proof
 
     std::fs::remove_dir_all(&dir).ok();
 }
@@ -583,8 +580,6 @@ fn v2_remove_non_trailing_file_keeps_remaining_decryptable() {
                 fm.name, actual_offset,
             )
         });
-        let hash = crypto::sha256_hex(&pt);
-        assert_eq!(hash, fm.sha256, "SHA-256 mismatch for {}", fm.name);
         let expected_data = file_data.iter()
             .find(|(n, _)| *n == fm.name.as_str())
             .map(|(_, d)| *d)
@@ -874,7 +869,7 @@ fn get_file_data_v2_reads_chunked_after_prior_whole() {
     let section = &blob[offset..offset + section_len];
     let recovered1 = vault::decrypt_file(section, &files_meta[1], &key).unwrap();
     assert_eq!(recovered1, file1_bytes, "chunked file1 (after prior whole-file) must roundtrip");
-    assert_eq!(crypto::sha256_hex(&recovered1), files_meta[1].sha256);
+    // SHA-256 removed — GCM is canonical integrity proof
 
     // ── Recover file0 (whole-file legacy, offset 0) — backward compat proof ──
     let file0_offset = crypto::SALT_LEN + 4 + crypto::NONCE_LEN + meta_len;

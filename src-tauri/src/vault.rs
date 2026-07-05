@@ -6,7 +6,6 @@
 use crate::crypto::{self, KdfParams, SALT_LEN};
 use crate::error::CryptoError;
 use serde::{Deserialize, Serialize};
-use sha2::{Digest, Sha256};
 
 /// All metadata stored in plaintext in SQLite.
 /// Never includes encrypted content or key material.
@@ -217,7 +216,6 @@ pub fn encrypt_file_chunked(
     debug_assert!(chunk_size > 0, "chunk_size must be non-zero");
     use std::io::Read;
     let mut file = std::fs::File::open(path)?;
-    let mut hasher = Sha256::new();
     let mut out: Vec<u8> = Vec::new();
     let mut chunks: Vec<ChunkMetadata> = Vec::new();
     let mut buf = vec![0u8; chunk_size];
@@ -235,7 +233,6 @@ pub fn encrypt_file_chunked(
         if filled == 0 {
             break;
         }
-        hasher.update(&buf[..filled]);
         let (ct, nonce) = crypto::encrypt_section(&buf[..filled], key)?;
         chunks.push(ChunkMetadata { offset: out.len() as u64, nonce, size: filled as u64 });
         out.extend_from_slice(&ct);
@@ -243,8 +240,7 @@ pub fn encrypt_file_chunked(
         progress(total);
     }
 
-    let sha = hex::encode(hasher.finalize());
-    Ok((out, chunks, sha, total))
+    Ok((out, chunks, String::new(), total))
 }
 
 #[cfg(test)]
@@ -410,7 +406,7 @@ mod tests {
         assert_eq!(len, 5000);
         assert_eq!(chunks.len(), 3);
         assert_eq!(ticks, vec![2048, 4096, 5000]); // progress after each chunk
-        assert_eq!(sha, crypto::sha256_hex(&plaintext));
+        assert!(sha.is_empty()); // SHA-256 removed — GCM is canonical integrity proof
 
         // Reconstruct a FileMetadata and roundtrip through decrypt_file
         let fm = FileMetadata {

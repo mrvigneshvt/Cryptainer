@@ -272,30 +272,42 @@ pub async fn unlock_container(
         bytes_total: 0,
         message: "Reading encrypted container…".into(),
     });
-    let blob = std::fs::read(&meta.blob_path)?;
 
-    let actual_sha256 = crypto::sha256_hex(&blob);
-    if actual_sha256 != meta.blob_sha256 {
-        return Err(CryptoError::IntegrityFailure);
-    }
-
-    // Emit derive-key progress (indeterminate)
-    emit_progress(&app, ProgressPayload {
-        operation: "derive-key".into(),
-        current: 0,
-        total: 0,
-        file_name: None,
-        bytes_processed: blob.len() as u64,
-        bytes_total: blob.len() as u64,
-        message: "Deriving decryption key…".into(),
-    });
+    let blob_path = std::path::Path::new(&meta.blob_path);
 
     if meta.format_version == 2 {
-        let result = unlock_v2(&container_id, &password, &meta, &blob, sessions_v2);
+        // Read file size for progress tracking
+        let blob_len: u64 = std::fs::metadata(blob_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        // Streaming path: hash-verify full blob but only buffer header
+        let header = crypto::stream_verify_header(blob_path, &meta.blob_sha256)?;
+
+        // Emit derive-key progress (indeterminate)
+        emit_progress(&app, ProgressPayload {
+            operation: "derive-key".into(),
+            current: 0,
+            total: 0,
+            file_name: None,
+            bytes_processed: blob_len,
+            bytes_total: blob_len,
+            message: "Deriving decryption key…".into(),
+        });
+
+        // Derive key and build session from header bytes only
+        let result = unlock_v2(&container_id, &password, &meta, &header, sessions_v2);
         if result.is_ok() {
             record_audit(&pool, "unlock", Some(&container_id), Some(&meta.name), None);
         }
         return result;
+    }
+
+    // v1 detected — full blob read (legacy, small)
+    let blob = std::fs::read(blob_path)?;
+    let actual_sha256 = crypto::sha256_hex(&blob);
+    if actual_sha256 != meta.blob_sha256 {
+        return Err(CryptoError::IntegrityFailure);
     }
 
     // v1 detected — auto-migrate to v2
@@ -401,7 +413,7 @@ fn convert_v1_to_v2(
     }).collect();
 
     for f in &payload.files {
-        let sha256 = crypto::sha256_hex(&f.data);
+        let sha256 = String::new();
         let (encrypted, nonce) = crypto::encrypt_section(&f.data, &key)?;
         files_meta.push(FileMetadata {
             id: f.id.clone(),
@@ -627,11 +639,7 @@ fn get_file_data_v2(
 
     let plaintext = vault::decrypt_file(&encrypted, &fm, &key_arr)?;
 
-    // Verify SHA-256
-    let hash = crypto::sha256_hex(&plaintext);
-    if hash != fm.sha256 {
-        return Err(CryptoError::IntegrityFailure);
-    }
+    // GCM authenticated decrypt already verified integrity
 
     // Insert into cache
     {
@@ -786,17 +794,18 @@ async fn save_edits_v2(
     }
     drop(verification_key);
 
-    // Read existing blob
-    let blob = std::fs::read(&meta.blob_path)?;
+    // Open blob for seeking per retained file (no full read)
+    let mut blob_file = std::fs::File::open(&meta.blob_path)?;
+    use std::io::{Read, Seek, SeekFrom};
+    let blob_total_len = blob_file.metadata()
+        .map(|m| m.len() as usize)
+        .unwrap_or(0);
 
     // Read metadata_len from blob header for read-side recovery
-    let end = SALT_LEN + 4;
-    if blob.len() < end {
-        return Err(CryptoError::InvalidFormat("save_edits_v2 blob too short for header".into()));
-    }
-    let meta_len_bytes: [u8; 4] = blob[SALT_LEN..end].try_into()
-        .map_err(|_| CryptoError::InvalidFormat("save_edits_v2 blob too short for header".into()))?;
-    let blob_metadata_len = u32::from_le_bytes(meta_len_bytes) as usize;
+    let mut meta_len_buf = [0u8; 4];
+    blob_file.seek(SeekFrom::Start(SALT_LEN as u64))?;
+    blob_file.read_exact(&mut meta_len_buf)?;
+    let blob_metadata_len = u32::from_le_bytes(meta_len_buf) as usize;
 
     // Compute total plaintext bytes for progress bar (retained + new)
     let retained_bytes: u64 = old_metadata.files.iter()
@@ -808,21 +817,14 @@ async fn save_edits_v2(
     let retained_count = old_metadata.files.iter().filter(|fm| !file_ids_to_remove.contains(&fm.id)).count();
     let total_ops = (retained_count + files_to_add.len()) as u64;
 
-    // Decrypt remaining files (not removed), re-encrypt with new nonces.
-    // Uses read-side offset recovery (ignores stored fm.offset, computes from
-    // blob header metadata_len + cumulative `file_encrypted_len` sums) so that
-    // containers created with the buggy two-pass code — and chunked files from
-    // the streaming create_container — remain readable.
+    // Retained loop: seek + read each file's encrypted section from blob
     let mut new_meta: Vec<FileMetadata> = Vec::new();
     let mut encrypted_parts: Vec<Vec<u8>> = Vec::new();
     let mut total_size: u64 = 0;
-    let mut prior_sum: usize = 0; // cumulative encrypted size of prior retained files
+    let mut prior_sum: usize = 0;
     let mut progress_idx: u64 = 0;
 
     for fm in &old_metadata.files {
-        // On-disk encrypted length handles both whole-file and chunked layouts.
-        // Retained files created by the streaming `create_container` are chunked,
-        // so `fm.size + 16` would mis-slice them.
         let enc_len = vault::file_encrypted_len(fm);
         if file_ids_to_remove.contains(&fm.id) {
             prior_sum += enc_len;
@@ -834,25 +836,25 @@ async fn save_edits_v2(
             total: total_ops,
             file_name: Some(fm.name.clone()),
             bytes_processed: total_size,
-            bytes_total: total_bytes,  // total plaintext bytes (retained + new)
+            bytes_total: total_bytes,
             message: format!("Saving {} ({} / {})", fm.name, progress_idx + 1, total_ops),
         });
         // Read-side recovery: compute actual offset from blob header metadata_len
-        let actual_offset = SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum;
-        if actual_offset + enc_len > blob.len() {
+        let actual_offset = (SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum) as u64;
+        if actual_offset as usize + enc_len > blob_total_len {
             return Err(CryptoError::IntegrityFailure);
         }
-        // Copy ciphertext as-is — no decrypt/re-encrypt needed.
-        // Plaintext unchanged, so original data_nonce + sha256 + chunks remain valid.
-        // Offset will be recomputed by compute_v2_layout below.
-        let enc_slice = blob[actual_offset..actual_offset + enc_len].to_vec();
+        // Seek + read_exact — only this file's ciphertext enters memory
+        blob_file.seek(SeekFrom::Start(actual_offset))?;
+        let mut enc_slice = vec![0u8; enc_len];
+        blob_file.read_exact(&mut enc_slice)?;
 
         new_meta.push(FileMetadata {
             id: fm.id.clone(),
             name: fm.name.clone(),
             mime: fm.mime.clone(),
             size: fm.size,
-            offset: 0, // set by compute_v2_layout below
+            offset: 0,
             data_nonce: fm.data_nonce,
             sha256: fm.sha256.clone(),
             chunks: fm.chunks.clone(),
@@ -1046,9 +1048,9 @@ pub async fn export_container(
         bytes_processed: 0, bytes_total: 0,
         message: "Reading container for export\u{2026}".into(),
     });
-
-    let blob = std::fs::read(&meta.blob_path)?;
-    let ctnr_bytes = export::serialize(&meta, &blob)?;
+    // Stream-write .ctnr: header + blob copy (no full-Vec buffer)
+    let mut out_file = std::fs::File::create(&dest_path)?;
+    export::write_ctnr(&mut out_file, &meta, std::path::Path::new(&meta.blob_path))?;
 
     emit_progress(&app, ProgressPayload {
         operation: "export".into(),
@@ -1059,7 +1061,6 @@ pub async fn export_container(
         message: "Writing export file\u{2026}".into(),
     });
 
-    std::fs::write(&dest_path, ctnr_bytes)?;
     let details = serde_json::json!({ "dest_path": &dest_path }).to_string();
     record_audit(&pool, "export", Some(&container_id), Some(&meta.name), Some(&details));
     Ok(())
@@ -1073,26 +1074,39 @@ pub async fn import_container(
     app: AppHandle,
     pool: State<'_, sqlx::SqlitePool>,
 ) -> std::result::Result<ContainerMeta, CryptoError> {
-    let bytes = std::fs::read(&src_path)?;
+    // Streaming import: read header prefix, then copy blob with inline SHA-256
+    use std::io::{Read, Write};
+    use sha2::Digest;
+    let mut src_file = std::fs::File::open(&src_path)?;
+    let mut header_prefix = [0u8; 10];
+    src_file.read_exact(&mut header_prefix)?;
 
-    emit_progress(&app, ProgressPayload {
-        operation: "import".into(),
-        current: 0, total: 0,
-        file_name: None,
-        bytes_processed: 0, bytes_total: 0,
-        message: "Reading import file\u{2026}".into(),
-    });
-    let (header, blob) = export::deserialize(&bytes)?;
+    // Validate magic + parse header length
+    if &header_prefix[0..4] != export::MAGIC {
+        return Err(CryptoError::InvalidFormat("Not a .ctnr file".into()));
+    }
+    if header_prefix[4] != export::NULL {
+        return Err(CryptoError::InvalidFormat("Invalid null byte".into()));
+    }
+    if header_prefix[5] != export::VERSION {
+        return Err(CryptoError::InvalidFormat(format!(
+            "Unsupported version: {}. Expected {}", header_prefix[5], export::VERSION
+        )));
+    }
+    let header_len = u32::from_le_bytes(header_prefix[6..10].try_into().unwrap()) as usize;
 
-    // Verify blob integrity
-    let actual_sha256 = crypto::sha256_hex(&blob);
-    if actual_sha256 != header.blob_sha256 {
-        return Err(CryptoError::IntegrityFailure);
+    // Guard against OOM from malicious/corrupted header size
+    let src_len = src_file.metadata()?.len();
+    if (header_len as u64) > src_len || header_len > 50 * 1024 * 1024 {
+        return Err(CryptoError::InvalidFormat("Header size is invalid or too large".into()));
     }
 
-    // Check for duplicate ID before writing the blob, so a re-import fails
-    // cleanly with a friendly message instead of a cryptic UNIQUE-constraint
-    // SQL error — and without leaving an orphaned blob on disk.
+    // Read and parse header JSON
+    let mut header_json = vec![0u8; header_len];
+    src_file.read_exact(&mut header_json)?;
+    let header: export::ContainerHeader = serde_json::from_slice(&header_json)?;
+
+    // Check for duplicate ID before writing blob
     let existing = storage::get_container(&pool, &header.id).await;
     if existing.is_ok() {
         return Err(CryptoError::InvalidFormat(
@@ -1100,7 +1114,12 @@ pub async fn import_container(
         ));
     }
 
-    // Write blob to local blobs dir
+    // Validate container ID is a UUID to prevent path traversal
+    if uuid::Uuid::parse_str(&header.id).is_err() {
+        return Err(CryptoError::InvalidFormat("Invalid container ID format".into()));
+    }
+
+    // Derive blob path
     let blobs_dir = app.path().app_data_dir()
         .map_err(|e| CryptoError::Io(std::io::Error::other(e.to_string())))?
         .join("blobs");
@@ -1115,7 +1134,33 @@ pub async fn import_container(
         bytes_total: 0,
         message: "Writing imported container\u{2026}".into(),
     });
-    std::fs::write(&blob_path, &blob)?;
+
+    // Stream-copy blob body with inline SHA-256
+    let mut blob_file = std::fs::File::create(&blob_path)?;
+    let mut hasher = sha2::Sha256::new();
+    let mut buf = vec![0u8; 65536];
+    let copy_result = (|| -> std::result::Result<(), CryptoError> {
+        loop {
+            let n = src_file.read(&mut buf)?;
+            if n == 0 { break; }
+            hasher.update(&buf[..n]);
+            blob_file.write_all(&buf[..n])?;
+        }
+        Ok(())
+    })();
+    drop(blob_file); // release handle before cleanup (Windows compat)
+    if let Err(e) = copy_result {
+        let _ = std::fs::remove_file(&blob_path);
+        return Err(e);
+    }
+
+    // Verify blob integrity
+    let actual_sha256 = hex::encode(hasher.finalize());
+    if actual_sha256 != header.blob_sha256 {
+        // Clean up orphaned blob
+        let _ = std::fs::remove_file(&blob_path);
+        return Err(CryptoError::IntegrityFailure);
+    }
 
     let kdf_params: KdfParams = serde_json::from_value(header.kdf_params)?;
     let meta = ContainerMeta {
@@ -1205,65 +1250,42 @@ pub async fn download_files(
 
     let total_files = file_ids.len() as u64;
 
-    // Compute total bytes from session metadata
-    let total_bytes: u64 = {
+    // Pre-fetch all file metadata in a single lock — zero lock acquisitions in loop
+    let file_metas: Vec<(String, String, u64)> = {
         let store = sessions_v2.0.lock().unwrap();
-        store.get(&container_id)
-            .map(|session| {
-                file_ids.iter().filter_map(|id| {
-                    session.metadata.files.iter()
-                        .find(|fm| fm.id == *id)
-                        .map(|fm| fm.size)
-                }).sum()
-            })
-            .unwrap_or(0)
+        store.get(&container_id).map(|s| {
+            file_ids.iter().filter_map(|id| {
+                s.metadata.files.iter()
+                    .find(|fm| fm.id == *id)
+                    .map(|fm| (fm.id.clone(), fm.name.clone(), fm.size))
+            }).collect()
+        }).unwrap_or_default()
     };
+    let total_bytes: u64 = file_metas.iter().map(|(_, _, sz)| sz).sum();
 
     let mut results = Vec::with_capacity(file_ids.len());
     let mut cumulative_bytes: u64 = 0;
 
-    for (i, file_id) in file_ids.iter().enumerate() {
+    for (i, (fid, fname, _fsize)) in file_metas.iter().enumerate() {
         // Emit decrypt progress before processing this file
-        let file_name_hint = {
-            let store = sessions_v2.0.lock().unwrap();
-            store.get(&container_id)
-                .and_then(|session| {
-                    session.metadata.files.iter()
-                        .find(|fm| fm.id == *file_id)
-                        .map(|fm| fm.name.clone())
-                })
-                .unwrap_or_else(|| file_id.clone())
-        };
         emit_progress(&app, ProgressPayload {
             operation: "decrypt".into(),
             current: i as u64,
             total: total_files,
-            file_name: Some(file_name_hint.clone()),
+            file_name: Some(fname.clone()),
             bytes_processed: cumulative_bytes,
             bytes_total: total_bytes,
-            message: format!("Decrypting {} ({} / {})", file_name_hint, i + 1, total_files),
+            message: format!("Decrypting {} ({} / {})", fname, i + 1, total_files),
         });
-        match get_file_data_v2(&container_id, file_id, &sessions_v2) {
+        match get_file_data_v2(&container_id, fid, &sessions_v2) {
             Ok(Some(data)) => {
                 cumulative_bytes += data.len() as u64;
-                // Look up the file name from session metadata
-                let file_name = {
-                    let store = sessions_v2.0.lock().unwrap();
-                    store.get(&container_id)
-                        .and_then(|session| {
-                            session.metadata.files.iter()
-                                .find(|f| f.id == *file_id)
-                                .map(|f| f.name.clone())
-                        })
-                        .unwrap_or_else(|| file_id.clone())
-                };
-
-                let write_path = resolve_collision_path(&dest, &file_name);
+                let write_path = resolve_collision_path(&dest, fname);
                 match std::fs::write(&write_path, &data) {
                     Ok(()) => {
                         let path_str = write_path.to_string_lossy().into_owned();
                         results.push(vault::DownloadResult {
-                            file_id: file_id.clone(),
+                            file_id: fid.clone(),
                             written_path: Some(path_str),
                             bytes: data.len() as u64,
                             error: None,
@@ -1271,7 +1293,7 @@ pub async fn download_files(
                     }
                     Err(e) => {
                         results.push(vault::DownloadResult {
-                            file_id: file_id.clone(),
+                            file_id: fid.clone(),
                             written_path: None,
                             bytes: 0,
                             error: Some(format!("Write error: {}", e)),
@@ -1281,7 +1303,7 @@ pub async fn download_files(
             }
             Ok(None) => {
                 results.push(vault::DownloadResult {
-                    file_id: file_id.clone(),
+                    file_id: fid.clone(),
                     written_path: None,
                     bytes: 0,
                     error: Some("No v2 session — container may be locked".into()),
@@ -1289,7 +1311,7 @@ pub async fn download_files(
             }
             Err(e) => {
                 results.push(vault::DownloadResult {
-                    file_id: file_id.clone(),
+                    file_id: fid.clone(),
                     written_path: None,
                     bytes: 0,
                     error: Some(e.to_string()),
@@ -1297,8 +1319,7 @@ pub async fn download_files(
             }
         }
     }
-
-    // Audit container name from DB (not from session metadata's first file name)
+    // Audit container name from DB
     let container_name = storage::get_container(&pool, &container_id)
         .await
         .map(|m| m.name)
