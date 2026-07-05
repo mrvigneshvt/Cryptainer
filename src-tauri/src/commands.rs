@@ -798,7 +798,13 @@ async fn save_edits_v2(
         .map_err(|_| CryptoError::InvalidFormat("save_edits_v2 blob too short for header".into()))?;
     let blob_metadata_len = u32::from_le_bytes(meta_len_bytes) as usize;
 
-    // Compute total files for progress tracking (retained + new)
+    // Compute total plaintext bytes for progress bar (retained + new)
+    let retained_bytes: u64 = old_metadata.files.iter()
+        .filter(|fm| !file_ids_to_remove.contains(&fm.id))
+        .map(|fm| fm.size)
+        .sum();
+    let total_add_bytes: u64 = files_to_add.iter().map(|f| f.size).sum();
+    let total_bytes = retained_bytes + total_add_bytes;
     let retained_count = old_metadata.files.iter().filter(|fm| !file_ids_to_remove.contains(&fm.id)).count();
     let total_ops = (retained_count + files_to_add.len()) as u64;
 
@@ -828,7 +834,7 @@ async fn save_edits_v2(
             total: total_ops,
             file_name: Some(fm.name.clone()),
             bytes_processed: total_size,
-            bytes_total: 0, // unknown total bytes during save
+            bytes_total: total_bytes,  // total plaintext bytes (retained + new)
             message: format!("Saving {} ({} / {})", fm.name, progress_idx + 1, total_ops),
         });
         // Read-side recovery: compute actual offset from blob header metadata_len
@@ -859,9 +865,9 @@ async fn save_edits_v2(
 
     // Encrypt new files by streaming from disk in chunks (chunked layout +
     // per-chunk byte progress). Progress reports cumulative added bytes against
-    // the true total of all files being added.
-    let total_add_bytes: u64 = files_to_add.iter().map(|f| f.size).sum();
+    // the total plaintext size (retained + new).
     let mut add_done: u64 = 0;
+    let retained_size = total_size; // snapshot before loop — total_size mutates
     for f in &files_to_add {
         let base = add_done;
         let mut emit = |done_in_file: u64| {
@@ -870,8 +876,8 @@ async fn save_edits_v2(
                 current: progress_idx,
                 total: total_ops,
                 file_name: Some(f.name.clone()),
-                bytes_processed: base + done_in_file, // cumulative added bytes
-                bytes_total: total_add_bytes,         // real total (was 0)
+                bytes_processed: retained_size + base + done_in_file, // retained + cumulative new
+                bytes_total: total_bytes,                         // total plaintext (retained + new)
                 message: format!("Encrypting {} ({} / {})", f.name, progress_idx + 1, total_ops),
             });
         };
