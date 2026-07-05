@@ -209,6 +209,12 @@ pub fn stream_verify_header(
         prefix[SALT_LEN..SALT_LEN + 4].try_into().unwrap()
     ) as usize;
 
+    // Guard against OOM from malicious/corrupted metadata size
+    let file_len = file.metadata()?.len() as usize;
+    if meta_len > file_len || meta_len > 50 * 1024 * 1024 {
+        return Err(CryptoError::InvalidFormat("Metadata size is invalid or too large".into()));
+    }
+
     // Phase 2: read metadata ciphertext
     let mut meta_ciphertext = vec![0u8; meta_len];
     file.read_exact(&mut meta_ciphertext)?;

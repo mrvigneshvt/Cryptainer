@@ -1095,6 +1095,12 @@ pub async fn import_container(
     }
     let header_len = u32::from_le_bytes(header_prefix[6..10].try_into().unwrap()) as usize;
 
+    // Guard against OOM from malicious/corrupted header size
+    let src_len = src_file.metadata()?.len() as usize;
+    if header_len > src_len || header_len > 50 * 1024 * 1024 {
+        return Err(CryptoError::InvalidFormat("Header size is invalid or too large".into()));
+    }
+
     // Read and parse header JSON
     let mut header_json = vec![0u8; header_len];
     src_file.read_exact(&mut header_json)?;
@@ -1106,6 +1112,11 @@ pub async fn import_container(
         return Err(CryptoError::InvalidFormat(
             "A container with this ID already exists in the vault".into(),
         ));
+    }
+
+    // Validate container ID is a UUID to prevent path traversal
+    if uuid::Uuid::parse_str(&header.id).is_err() {
+        return Err(CryptoError::InvalidFormat("Invalid container ID format".into()));
     }
 
     // Derive blob path
@@ -1128,11 +1139,18 @@ pub async fn import_container(
     let mut blob_file = std::fs::File::create(&blob_path)?;
     let mut hasher = sha2::Sha256::new();
     let mut buf = vec![0u8; 65536];
-    loop {
-        let n = src_file.read(&mut buf)?;
-        if n == 0 { break; }
-        hasher.update(&buf[..n]);
-        blob_file.write_all(&buf[..n])?;
+    let copy_result = (|| -> std::result::Result<(), CryptoError> {
+        loop {
+            let n = src_file.read(&mut buf)?;
+            if n == 0 { break; }
+            hasher.update(&buf[..n]);
+            blob_file.write_all(&buf[..n])?;
+        }
+        Ok(())
+    })();
+    if let Err(e) = copy_result {
+        let _ = std::fs::remove_file(&blob_path);
+        return Err(e);
     }
 
     // Verify blob integrity
