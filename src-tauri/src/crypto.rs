@@ -186,6 +186,53 @@ pub fn sha256_hex(data: &[u8]) -> String {
     hex::encode(hasher.finalize())
 }
 
+/// Stream-reads a blob file through SHA-256 for integrity verification.
+/// Only buffers the header portion (salt + metadata_len + nonce + metadata_ciphertext).
+/// Returns the header bytes, or `IntegrityFailure` on hash mismatch.
+pub fn stream_verify_header(
+    path: &std::path::Path,
+    expected_sha256: &str,
+) -> Result<Vec<u8>> {
+    use std::io::Read;
+
+    let mut file = std::fs::File::open(path)?;
+    let mut hasher = Sha256::new();
+
+    // Phase 1: read fixed-size prefix: salt(16) + meta_len(4) + nonce(12) = 32 bytes
+    let prefix_len = SALT_LEN + 4 + NONCE_LEN;
+    let mut prefix = vec![0u8; prefix_len];
+    file.read_exact(&mut prefix)?;
+    hasher.update(&prefix);
+
+    // Parse metadata ciphertext length
+    let meta_len = u32::from_le_bytes(
+        prefix[SALT_LEN..SALT_LEN + 4].try_into().unwrap()
+    ) as usize;
+
+    // Phase 2: read metadata ciphertext
+    let mut meta_ciphertext = vec![0u8; meta_len];
+    file.read_exact(&mut meta_ciphertext)?;
+    hasher.update(&meta_ciphertext);
+
+    // Phase 3: stream-read and hash remaining file data (file ciphertexts)
+    let mut buf = vec![0u8; 65536];
+    loop {
+        let n = file.read(&mut buf)?;
+        if n == 0 { break; }
+        hasher.update(&buf[..n]);
+    }
+
+    // Verify integrity
+    let actual_hash = hex::encode(hasher.finalize());
+    if actual_hash != expected_sha256 {
+        return Err(CryptoError::IntegrityFailure);
+    }
+
+    // Return header bytes only (prefix + metadata ciphertext)
+    prefix.extend_from_slice(&meta_ciphertext);
+    Ok(prefix)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

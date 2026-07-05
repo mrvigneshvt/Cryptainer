@@ -272,30 +272,42 @@ pub async fn unlock_container(
         bytes_total: 0,
         message: "Reading encrypted container…".into(),
     });
-    let blob = std::fs::read(&meta.blob_path)?;
 
-    let actual_sha256 = crypto::sha256_hex(&blob);
-    if actual_sha256 != meta.blob_sha256 {
-        return Err(CryptoError::IntegrityFailure);
-    }
-
-    // Emit derive-key progress (indeterminate)
-    emit_progress(&app, ProgressPayload {
-        operation: "derive-key".into(),
-        current: 0,
-        total: 0,
-        file_name: None,
-        bytes_processed: blob.len() as u64,
-        bytes_total: blob.len() as u64,
-        message: "Deriving decryption key…".into(),
-    });
+    let blob_path = std::path::Path::new(&meta.blob_path);
 
     if meta.format_version == 2 {
-        let result = unlock_v2(&container_id, &password, &meta, &blob, sessions_v2);
+        // Read file size for progress tracking
+        let blob_len: u64 = std::fs::metadata(blob_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+
+        // Streaming path: hash-verify full blob but only buffer header
+        let header = crypto::stream_verify_header(blob_path, &meta.blob_sha256)?;
+
+        // Emit derive-key progress (indeterminate)
+        emit_progress(&app, ProgressPayload {
+            operation: "derive-key".into(),
+            current: 0,
+            total: 0,
+            file_name: None,
+            bytes_processed: blob_len,
+            bytes_total: blob_len,
+            message: "Deriving decryption key…".into(),
+        });
+
+        // Derive key and build session from header bytes only
+        let result = unlock_v2(&container_id, &password, &meta, &header, sessions_v2);
         if result.is_ok() {
             record_audit(&pool, "unlock", Some(&container_id), Some(&meta.name), None);
         }
         return result;
+    }
+
+    // v1 detected — full blob read (legacy, small)
+    let blob = std::fs::read(blob_path)?;
+    let actual_sha256 = crypto::sha256_hex(&blob);
+    if actual_sha256 != meta.blob_sha256 {
+        return Err(CryptoError::IntegrityFailure);
     }
 
     // v1 detected — auto-migrate to v2
