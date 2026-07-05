@@ -1231,65 +1231,42 @@ pub async fn download_files(
 
     let total_files = file_ids.len() as u64;
 
-    // Compute total bytes from session metadata
-    let total_bytes: u64 = {
+    // Pre-fetch all file metadata in a single lock — zero lock acquisitions in loop
+    let file_metas: Vec<(String, String, u64)> = {
         let store = sessions_v2.0.lock().unwrap();
-        store.get(&container_id)
-            .map(|session| {
-                file_ids.iter().filter_map(|id| {
-                    session.metadata.files.iter()
-                        .find(|fm| fm.id == *id)
-                        .map(|fm| fm.size)
-                }).sum()
-            })
-            .unwrap_or(0)
+        store.get(&container_id).map(|s| {
+            file_ids.iter().filter_map(|id| {
+                s.metadata.files.iter()
+                    .find(|fm| fm.id == *id)
+                    .map(|fm| (fm.id.clone(), fm.name.clone(), fm.size))
+            }).collect()
+        }).unwrap_or_default()
     };
+    let total_bytes: u64 = file_metas.iter().map(|(_, _, sz)| sz).sum();
 
     let mut results = Vec::with_capacity(file_ids.len());
     let mut cumulative_bytes: u64 = 0;
 
-    for (i, file_id) in file_ids.iter().enumerate() {
+    for (i, (fid, fname, _fsize)) in file_metas.iter().enumerate() {
         // Emit decrypt progress before processing this file
-        let file_name_hint = {
-            let store = sessions_v2.0.lock().unwrap();
-            store.get(&container_id)
-                .and_then(|session| {
-                    session.metadata.files.iter()
-                        .find(|fm| fm.id == *file_id)
-                        .map(|fm| fm.name.clone())
-                })
-                .unwrap_or_else(|| file_id.clone())
-        };
         emit_progress(&app, ProgressPayload {
             operation: "decrypt".into(),
             current: i as u64,
             total: total_files,
-            file_name: Some(file_name_hint.clone()),
+            file_name: Some(fname.clone()),
             bytes_processed: cumulative_bytes,
             bytes_total: total_bytes,
-            message: format!("Decrypting {} ({} / {})", file_name_hint, i + 1, total_files),
+            message: format!("Decrypting {} ({} / {})", fname, i + 1, total_files),
         });
-        match get_file_data_v2(&container_id, file_id, &sessions_v2) {
+        match get_file_data_v2(&container_id, fid, &sessions_v2) {
             Ok(Some(data)) => {
                 cumulative_bytes += data.len() as u64;
-                // Look up the file name from session metadata
-                let file_name = {
-                    let store = sessions_v2.0.lock().unwrap();
-                    store.get(&container_id)
-                        .and_then(|session| {
-                            session.metadata.files.iter()
-                                .find(|f| f.id == *file_id)
-                                .map(|f| f.name.clone())
-                        })
-                        .unwrap_or_else(|| file_id.clone())
-                };
-
-                let write_path = resolve_collision_path(&dest, &file_name);
+                let write_path = resolve_collision_path(&dest, fname);
                 match std::fs::write(&write_path, &data) {
                     Ok(()) => {
                         let path_str = write_path.to_string_lossy().into_owned();
                         results.push(vault::DownloadResult {
-                            file_id: file_id.clone(),
+                            file_id: fid.clone(),
                             written_path: Some(path_str),
                             bytes: data.len() as u64,
                             error: None,
@@ -1297,7 +1274,7 @@ pub async fn download_files(
                     }
                     Err(e) => {
                         results.push(vault::DownloadResult {
-                            file_id: file_id.clone(),
+                            file_id: fid.clone(),
                             written_path: None,
                             bytes: 0,
                             error: Some(format!("Write error: {}", e)),
@@ -1307,7 +1284,7 @@ pub async fn download_files(
             }
             Ok(None) => {
                 results.push(vault::DownloadResult {
-                    file_id: file_id.clone(),
+                    file_id: fid.clone(),
                     written_path: None,
                     bytes: 0,
                     error: Some("No v2 session — container may be locked".into()),
@@ -1315,7 +1292,7 @@ pub async fn download_files(
             }
             Err(e) => {
                 results.push(vault::DownloadResult {
-                    file_id: file_id.clone(),
+                    file_id: fid.clone(),
                     written_path: None,
                     bytes: 0,
                     error: Some(e.to_string()),
@@ -1323,8 +1300,7 @@ pub async fn download_files(
             }
         }
     }
-
-    // Audit container name from DB (not from session metadata's first file name)
+    // Audit container name from DB
     let container_name = storage::get_container(&pool, &container_id)
         .await
         .map(|m| m.name)
