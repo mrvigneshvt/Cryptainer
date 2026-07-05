@@ -786,17 +786,18 @@ async fn save_edits_v2(
     }
     drop(verification_key);
 
-    // Read existing blob
-    let blob = std::fs::read(&meta.blob_path)?;
+    // Open blob for seeking per retained file (no full read)
+    let mut blob_file = std::fs::File::open(&meta.blob_path)?;
+    use std::io::{Read, Seek, SeekFrom};
+    let blob_total_len = blob_file.metadata()
+        .map(|m| m.len() as usize)
+        .unwrap_or(0);
 
     // Read metadata_len from blob header for read-side recovery
-    let end = SALT_LEN + 4;
-    if blob.len() < end {
-        return Err(CryptoError::InvalidFormat("save_edits_v2 blob too short for header".into()));
-    }
-    let meta_len_bytes: [u8; 4] = blob[SALT_LEN..end].try_into()
-        .map_err(|_| CryptoError::InvalidFormat("save_edits_v2 blob too short for header".into()))?;
-    let blob_metadata_len = u32::from_le_bytes(meta_len_bytes) as usize;
+    let mut meta_len_buf = [0u8; 4];
+    blob_file.seek(SeekFrom::Start(SALT_LEN as u64))?;
+    blob_file.read_exact(&mut meta_len_buf)?;
+    let blob_metadata_len = u32::from_le_bytes(meta_len_buf) as usize;
 
     // Compute total plaintext bytes for progress bar (retained + new)
     let retained_bytes: u64 = old_metadata.files.iter()
@@ -808,21 +809,14 @@ async fn save_edits_v2(
     let retained_count = old_metadata.files.iter().filter(|fm| !file_ids_to_remove.contains(&fm.id)).count();
     let total_ops = (retained_count + files_to_add.len()) as u64;
 
-    // Decrypt remaining files (not removed), re-encrypt with new nonces.
-    // Uses read-side offset recovery (ignores stored fm.offset, computes from
-    // blob header metadata_len + cumulative `file_encrypted_len` sums) so that
-    // containers created with the buggy two-pass code — and chunked files from
-    // the streaming create_container — remain readable.
+    // Retained loop: seek + read each file's encrypted section from blob
     let mut new_meta: Vec<FileMetadata> = Vec::new();
     let mut encrypted_parts: Vec<Vec<u8>> = Vec::new();
     let mut total_size: u64 = 0;
-    let mut prior_sum: usize = 0; // cumulative encrypted size of prior retained files
+    let mut prior_sum: usize = 0;
     let mut progress_idx: u64 = 0;
 
     for fm in &old_metadata.files {
-        // On-disk encrypted length handles both whole-file and chunked layouts.
-        // Retained files created by the streaming `create_container` are chunked,
-        // so `fm.size + 16` would mis-slice them.
         let enc_len = vault::file_encrypted_len(fm);
         if file_ids_to_remove.contains(&fm.id) {
             prior_sum += enc_len;
@@ -834,25 +828,25 @@ async fn save_edits_v2(
             total: total_ops,
             file_name: Some(fm.name.clone()),
             bytes_processed: total_size,
-            bytes_total: total_bytes,  // total plaintext bytes (retained + new)
+            bytes_total: total_bytes,
             message: format!("Saving {} ({} / {})", fm.name, progress_idx + 1, total_ops),
         });
         // Read-side recovery: compute actual offset from blob header metadata_len
-        let actual_offset = SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum;
-        if actual_offset + enc_len > blob.len() {
+        let actual_offset = (SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum) as u64;
+        if actual_offset as usize + enc_len > blob_total_len {
             return Err(CryptoError::IntegrityFailure);
         }
-        // Copy ciphertext as-is — no decrypt/re-encrypt needed.
-        // Plaintext unchanged, so original data_nonce + sha256 + chunks remain valid.
-        // Offset will be recomputed by compute_v2_layout below.
-        let enc_slice = blob[actual_offset..actual_offset + enc_len].to_vec();
+        // Seek + read_exact — only this file's ciphertext enters memory
+        blob_file.seek(SeekFrom::Start(actual_offset))?;
+        let mut enc_slice = vec![0u8; enc_len];
+        blob_file.read_exact(&mut enc_slice)?;
 
         new_meta.push(FileMetadata {
             id: fm.id.clone(),
             name: fm.name.clone(),
             mime: fm.mime.clone(),
             size: fm.size,
-            offset: 0, // set by compute_v2_layout below
+            offset: 0,
             data_nonce: fm.data_nonce,
             sha256: fm.sha256.clone(),
             chunks: fm.chunks.clone(),
