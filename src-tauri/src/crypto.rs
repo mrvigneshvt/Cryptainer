@@ -210,8 +210,8 @@ pub fn stream_verify_header(
     ) as usize;
 
     // Guard against OOM from malicious/corrupted metadata size
-    let file_len = file.metadata()?.len() as usize;
-    if meta_len > file_len || meta_len > 50 * 1024 * 1024 {
+    let file_len = file.metadata()?.len();
+    if (meta_len as u64) > file_len || meta_len > 50 * 1024 * 1024 {
         return Err(CryptoError::InvalidFormat("Metadata size is invalid or too large".into()));
     }
 

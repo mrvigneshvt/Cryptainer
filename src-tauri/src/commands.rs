@@ -1096,8 +1096,8 @@ pub async fn import_container(
     let header_len = u32::from_le_bytes(header_prefix[6..10].try_into().unwrap()) as usize;
 
     // Guard against OOM from malicious/corrupted header size
-    let src_len = src_file.metadata()?.len() as usize;
-    if header_len > src_len || header_len > 50 * 1024 * 1024 {
+    let src_len = src_file.metadata()?.len();
+    if (header_len as u64) > src_len || header_len > 50 * 1024 * 1024 {
         return Err(CryptoError::InvalidFormat("Header size is invalid or too large".into()));
     }
 
@@ -1148,6 +1148,7 @@ pub async fn import_container(
         }
         Ok(())
     })();
+    drop(blob_file); // release handle before cleanup (Windows compat)
     if let Err(e) = copy_result {
         let _ = std::fs::remove_file(&blob_path);
         return Err(e);
