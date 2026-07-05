@@ -746,7 +746,7 @@ async fn save_edits_v1(
     Ok(updated_meta)
 }
 
-/// V2 save_edits — per-file encryption flow. Re-encrypts every file.
+/// V2 save_edits — per-file encryption flow. Copies retained files verbatim; only encrypts new files.
 #[allow(clippy::too_many_arguments)]
 async fn save_edits_v2(
     app: AppHandle,
@@ -828,33 +828,31 @@ async fn save_edits_v2(
             total: total_ops,
             file_name: Some(fm.name.clone()),
             bytes_processed: total_size,
-            bytes_total: 0, // unknown total bytes during re-encrypt
-            message: format!("Re-encrypting {} ({} / {})", fm.name, progress_idx + 1, total_ops),
+            bytes_total: 0, // unknown total bytes during save
+            message: format!("Saving {} ({} / {})", fm.name, progress_idx + 1, total_ops),
         });
         // Read-side recovery: compute actual offset from blob header metadata_len
         let actual_offset = SALT_LEN + 4 + crypto::NONCE_LEN + blob_metadata_len + prior_sum;
         if actual_offset + enc_len > blob.len() {
             return Err(CryptoError::IntegrityFailure);
         }
-        // `decrypt_file` handles both whole-file and chunked source layouts.
-        let plaintext = vault::decrypt_file(&blob[actual_offset..actual_offset + enc_len], fm, &key_arr)?;
-        let sha256 = crypto::sha256_hex(&plaintext);
-        // Retained files are re-encrypted WHOLE-FILE, so their new metadata is
-        // `chunks: None` with a fresh whole-file nonce.
-        let (new_enc, new_nonce) = crypto::encrypt_section(&plaintext, &key_arr)?;
+        // Copy ciphertext as-is — no decrypt/re-encrypt needed.
+        // Plaintext unchanged, so original data_nonce + sha256 + chunks remain valid.
+        // Offset will be recomputed by compute_v2_layout below.
+        let enc_slice = blob[actual_offset..actual_offset + enc_len].to_vec();
 
         new_meta.push(FileMetadata {
             id: fm.id.clone(),
             name: fm.name.clone(),
             mime: fm.mime.clone(),
             size: fm.size,
-            offset: 0,
-            data_nonce: new_nonce,
-            sha256,
-            chunks: None,
+            offset: 0, // set by compute_v2_layout below
+            data_nonce: fm.data_nonce,
+            sha256: fm.sha256.clone(),
+            chunks: fm.chunks.clone(),
         });
         total_size += fm.size;
-        encrypted_parts.push(new_enc);
+        encrypted_parts.push(enc_slice);
         prior_sum += enc_len;
         progress_idx += 1;
     }
